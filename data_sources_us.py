@@ -108,19 +108,24 @@ def _fmt_source(v):
 
 def _sector_persona(symbol: str, info: Dict[str, object], news_titles: str = '') -> Dict[str, str]:
     blob = ' '.join([symbol, str(info.get('longName','')), str(info.get('sector','')), str(info.get('industry','')), news_titles]).upper()
-    if any(k in blob for k in ['MEMORY','DRAM','NAND','HBM','MICRON','SEMICONDUCTOR','CHIP','SILICON','IP','INTERFACE','AI']):
-        return {
-            'badge': '半導體 IP / 記憶體介面盤｜AI敘事加分｜乾淨產業分類｜盤中用 VWAP 驗證',
-            'label': '半導體 IP / 記憶體介面盤',
-            'bias': 'AI敘事加分｜用VWAP驗證',
-            'chip': '主軸是半導體 IP、授權與記憶體介面，AI 需求是加分，不是主分類。',
-        }
+    # Order matters: ONDS contains "Communication Equipment"; substring "IP" inside equipment
+    # must not classify it as semiconductor IP.
     if any(k in blob for k in ['DRONE','DEFENSE','AEROSPACE','UAV','UNMANNED']):
         return {
             'badge': '國防/無人機事件盤｜高波動題材｜盤中用 VWAP 驗證',
             'label': '國防/無人機事件盤',
             'bias': '事件股｜用VWAP驗證',
             'chip': '題材與訂單是主軸，Short Float 只是燃料，不是無腦追價理由。',
+        }
+    semicon_tokens = ['MEMORY','DRAM','NAND','HBM','MICRON','SEMICONDUCTOR','SEMICONDUCTORS','CHIP','SILICON','INTERFACE']
+    is_ip = bool(re.search(r'\bIP\b', blob))
+    is_ai = bool(re.search(r'\bAI\b', blob))
+    if any(k in blob for k in semicon_tokens) or is_ip or (is_ai and 'TECHNOLOGY' in blob and symbol.upper() in {'MU','MRVL','NVDA','AMD','AVGO','TSM'}):
+        return {
+            'badge': '半導體 / 記憶體 / AI供應鏈｜盤中用 VWAP 驗證',
+            'label': '半導體 / 記憶體 / AI供應鏈',
+            'bias': 'AI敘事加分｜用VWAP驗證',
+            'chip': '主軸是半導體、記憶體或AI供應鏈，仍以財報、VWAP與量價確認。',
         }
     return {
         'badge': '美股產業定位觀察｜盤中用 VWAP 驗證',

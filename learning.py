@@ -15,8 +15,6 @@ from memory_store import (
     read_audit_log,
     read_prediction_log,
     save_profiles,
-    sync_prediction_row_to_sheet,
-    sync_audit_row_to_sheet,
 )
 from ticker_resolver import resolve_ticker
 
@@ -140,17 +138,8 @@ def log_prediction(forecast: FinalForecast, macro: str = "neutral", live_data: b
     if rid:
         for old in read_prediction_log(500):
             if old.get("id") == rid:
-                # v23: local duplicate still needs to be pushed to Google Sheet.
-                try:
-                    sync_prediction_row_to_sheet(old)
-                except Exception:
-                    pass
                 return old
     append_jsonl(PREDICTION_LOG, row)
-    try:
-        sync_prediction_row_to_sheet(row)
-    except Exception:
-        pass
     return row
 
 
@@ -221,10 +210,6 @@ def audit_prediction_row(row: Dict[str, Any], actual_close: float, source: str =
         "applied": False,
     }
     append_jsonl(AUDIT_LOG, audit)
-    try:
-        sync_audit_row_to_sheet(audit)
-    except Exception:
-        pass
     _update_profile_from_audit(audit)
     return audit
 

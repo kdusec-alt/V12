@@ -12,12 +12,30 @@ TW_NAME_MAP = {
     "6586": ("醣基", "6586.TWO", "TPEX"),
     "00919": ("群益台灣精選高息", "00919.TW", "TWSE"),
     "2308": ("台達電", "2308.TW", "TWSE"),
+    "3037": ("欣興", "3037.TW", "TWSE"),
+    "2408": ("南亞科", "2408.TW", "TWSE"),
+    "5469": ("瀚宇博", "5469.TW", "TWSE"),
+}
+
+TW_NAME_ALIAS = {
+    "聯發科": "2454", "MEDIATEK": "2454",
+    "旺宏": "2337", "MACRONIX": "2337",
+    "力積電": "6770",
+    "醣基": "6586",
+    "台達電": "2308",
+    "欣興": "3037", "欣興電子": "3037",
+    "南亞科": "2408",
+    "瀚宇博": "5469",
 }
 
 US_NAME_MAP = {
     "ONDS": ("Ondas Holdings", "ONDS", "NASDAQ"),
     "MRVL": ("Marvell Technology", "MRVL", "NASDAQ"),
     "MU": ("Micron Technology", "MU", "NASDAQ"),
+    "NKE": ("Nike", "NKE", "NYSE"),
+    "AAPL": ("Apple", "AAPL", "NASDAQ"),
+    "NVDA": ("NVIDIA", "NVDA", "NASDAQ"),
+    "TSM": ("Taiwan Semiconductor", "TSM", "NYSE"),
 }
 
 ETF_CODES = {"00919", "0050", "00918", "00929", "00981A", "009823", "00997A"}
@@ -33,6 +51,9 @@ def resolve_ticker(raw: str) -> TickerInfo:
         raise ValueError("Ticker 不可為空")
 
     base = text.replace(".TW", "").replace(".TWO", "")
+    if base in TW_NAME_ALIAS:
+        base = TW_NAME_ALIAS[base]
+        text = base
     if re.fullmatch(r"\d{4,5}[A-Z]?", base):
         name, symbol, exchange = TW_NAME_MAP.get(base, (base, f"{base}.TW", "TWSE"))
         if text.endswith(".TWO"):

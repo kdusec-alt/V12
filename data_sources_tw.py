@@ -206,7 +206,7 @@ def _flow_context(ticker: TickerInfo, price_date: str, closes: List[float], last
         },
         "macro": {"accepted": False, "source": "WAIT_MACRO", "tw_gravity": None, "sox": None, "nq": None, "qqq": None, "vix": None},
         "futures": {"accepted": False, "source": "WAIT_FUTURES", "date": price_date},
-        "fundamental": {"month": "最近月", "revenue": None, "mom": None, "yoy": None, "eps": None, "source": "WAIT_FINANCIAL", "accepted": False},
+        "fundamental": {"month": "最近月", "revenue": None, "mom": None, "yoy": None, "eps": None, "source": "TW_FUNDAMENTAL_PENDING", "accepted": False},
     }
 V9_VERIFIED_TW_CONTEXT = {
     "6770.TW": {
@@ -281,6 +281,10 @@ def _finmind_query(dataset: str, stock_id: str, start: str, end: str | None = No
     if not isinstance(data, list):
         return []
     return data
+
+
+from data_sources_tw_fundamental import fetch_tw_fundamental_crosscheck
+
 def _to_int(value) -> int | None:
     if value in (None, "", "None", "nan"):
         return None
@@ -413,6 +417,11 @@ def _merge_official_context(ticker: TickerInfo, context: Dict[str, object], pric
         context["margin"] = validate_official_block(_fetch_finmind_margin(ticker.resolved_symbol, price_date), price_date, "資券")
     except Exception as exc:
         context["margin"] = _empty_margin(price_date, f"資券抓取失敗：{type(exc).__name__}")
+    try:
+        # Fundamental is an official/public-data block, not memory/news text.
+        context["fundamental"] = fetch_tw_fundamental_crosscheck(ticker.resolved_symbol, price_date)
+    except Exception as exc:
+        context["fundamental"] = {"accepted": False, "source": "TW_FUNDAMENTAL_FETCH_ERROR", "reason": f"fundamental error:{type(exc).__name__}"}
     try:
         context["tv_pressure"] = _tv_pressure_context(
             ticker.resolved_symbol,

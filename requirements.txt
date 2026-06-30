@@ -10,6 +10,3 @@ tqdm
 lxml
 html5lib
 beautifulsoup4
-
-gspread
-google-auth

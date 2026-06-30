@@ -105,22 +105,27 @@ def _futures_line(futures: dict, price: PriceFrame | None = None) -> str:
 def _fundamental_line(fundamental: dict, etf_note: str = "", price: PriceFrame | None = None, news_items: List[NewsItem] | None = None) -> str:
     if etf_note:
         return etf_note
-    if fundamental and bool(fundamental.get('accepted')):
-        parts = ["基本面"]
-        if fundamental.get('month'): parts.append(str(fundamental.get('month')))
-        if fundamental.get('revenue'): parts.append(f"當月 {fundamental.get('revenue')}")
-        if fundamental.get('mom'): parts.append(f"MoM {fundamental.get('mom')}")
-        if fundamental.get('yoy'): parts.append(f"YoY {fundamental.get('yoy')}")
-        if fundamental.get('accum_revenue'): parts.append(f"累計 {fundamental.get('accum_revenue')}")
-        if fundamental.get('accum_yoy'): parts.append(f"累計YoY {fundamental.get('accum_yoy')}")
-        if fundamental.get('event_score'): parts.append(f"事件敘事 {fundamental.get('event_score')}")
-        if fundamental.get('strength'): parts.append(f"強度 {fundamental.get('strength')}")
-        if fundamental.get('eps'): parts.append(f"EPS {fundamental.get('eps')}")
-        if fundamental.get('event_tags'): parts.append(str(fundamental.get('event_tags')))
-        return "｜".join([x for x in parts if x and not str(x).endswith('None')])
-    # 不用新聞標題頂替基本面；只給 V9 式最小基本面語境。
     name = price.ticker.name if price else "個股"
-    return f"基本面｜{name}｜月營收/EPS 尚未回補到 V9 欄位合約｜先看事件/價格/VWAP，不用新聞標題取代基本面"
+    f = fundamental or {}
+    if f.get('accepted'):
+        parts = []
+        if f.get('month'): parts.append(str(f.get('month')))
+        if f.get('revenue'): parts.append(f"當月 {f.get('revenue')}")
+        if f.get('mom'): parts.append(f"MoM {f.get('mom')}")
+        if f.get('yoy'): parts.append(f"YoY {f.get('yoy')}")
+        if f.get('accum_revenue'): parts.append(f"累計 {f.get('accum_revenue')}")
+        if f.get('accum_yoy'): parts.append(f"累計YoY {f.get('accum_yoy')}")
+        if f.get('eps'): parts.append(f"EPS {f.get('eps')}")
+        if f.get('eps_date'): parts.append(f"EPS日期 {f.get('eps_date')}")
+        src = str(f.get('source','')).replace('V9_VERIFIED_MOPS_EPS_MEMORY','MOPS/EPS已驗證')
+        if src: parts.append(f"來源 {src}")
+        if not f.get('cross_checked', True): parts.append('待交叉驗證')
+        return f"{name}｜" + "｜".join([x for x in parts if x and not str(x).endswith('None')])
+    # Frontend must never show engineering contract/fallback text.
+    reason = str(f.get('reason',''))
+    if reason:
+        return f"{name}｜月營收/EPS 查詢中｜先看價格/VWAP/法人資券｜詳細原因見 Admin Trace"
+    return f"{name}｜月營收/EPS 查詢中｜先看價格/VWAP/法人資券"
 def _session_words(price: PriceFrame) -> Dict[str, str]:
     status = getattr(price, "market_status", "closed_reference")
     if status == "intraday":
@@ -361,9 +366,17 @@ def _us_fundamental_line(price: PriceFrame, news_items: List[NewsItem] | None = 
     if f.get('accepted'):
         eps=f.get('eps'); rev=f.get('revenue'); qoq=f.get('qoq'); yoy=f.get('yoy'); pe=f.get('pe')
         q=f.get('quarter') or '最新財報'
+        if isinstance(q, (int, float)) or str(q).isdigit():
+            q = '最新財報'
         nxt=f.get('next_earnings') or ''
+        if isinstance(nxt, (int, float)) or str(nxt).isdigit():
+            try:
+                from datetime import datetime as _dt
+                nxt = _dt.fromtimestamp(int(nxt)).date().isoformat()
+            except Exception:
+                nxt = ''
         days=f.get('earnings_days')
-        parts=["月營收：美股不適用", "財報/營收", "最新財報", str(q)]
+        parts=["月營收：美股不適用", "財報/營收", str(q)]
         if rev is not None: parts.append(f"營收 {_us_money(rev)}")
         if qoq is not None: parts.append(f"QoQ {float(qoq):+.2f}%")
         if yoy is not None: parts.append(f"YoY {float(yoy):+.2f}%")
