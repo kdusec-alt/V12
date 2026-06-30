@@ -219,22 +219,24 @@ V9_VERIFIED_TW_CONTEXT = {
     "6586.TWO": {"fundamental":{"month":"最近月","revenue":"待官方更新","mom":"","yoy":"","eps":"","event_score":"+0.18","strength":"高","event_tags":"題材/事件盤","source":"V9_EVENT_MEMORY","accepted":True},"macro":{"accepted":True,"source":"V9_MACRO_FORWARD_CALENDAR_GUARD","date":"2026-06-29","event_score":0.18,"strength":"高","eps":"EPS/營收事件看深度分析","eps_tags":"題材/事件盤","calendar":"未來72小時無一級宏觀公布｜下一個一級事件：NFP 07/02 20:30 台灣｜FOMC利率決議：07/30 02:00 台灣","sox":-5.3,"nq":0.9,"vix":18.9}},
     "2308.TW": {"fundamental":{"month":"11504","revenue":"586.92億","mom":"-1.82%","yoy":"+43.92%","accum_revenue":"2,180.44億","accum_yoy":"+36.53%","eps":"","event_score":"+0.10","strength":"中","event_tags":"AI/電源/權值基本面","source":"V9_REVENUE_TRUTH_FALLBACK_MOPS_2026_04","accepted":True}}}
 def _apply_v9_verified_contract(ticker: TickerInfo, context: Dict[str, object], price_date: str) -> Dict[str, object]:
+    """Apply only non-chip V9 context.
+
+    V12 Golden Master rule after 2026/06/30 incident:
+    - 三大法人 / 資券 / 借券 / 外資期貨不得由 V9 memory 或固定內建資料補值。
+    - 這些證據只能來自本次官方資料源 fetch，否則明確標示官方資料未取得。
+    - 基本面 / macro 可保留 V9 verified public context，因為不會偽裝成今日官方籌碼。
+    """
     mem = V9_VERIFIED_TW_CONTEXT.get(ticker.resolved_symbol)
     if not mem:
         return context
-    # Official institution/margin rows are allowed only when they are concrete rows.
-    # V9 verified memory may restore real historical rows with explicit dates;
-    # it must never create placeholder text on the main dashboard.
+    forbidden_chip_keys = {"inst", "margin", "bsi", "futures", "foreign_amount"}
     for key, val in mem.items():
-        # V20: foreign amount must come from live FX/TAIEX formula, never from fixed memory.
-        if key == "foreign_amount":
+        if key in forbidden_chip_keys:
             continue
         cur = context.get(key, {}) if isinstance(context.get(key, {}), dict) else {}
         if not cur.get("accepted"):
             v = dict(val)
             v.setdefault("date", price_date)
-            if key in {"inst", "margin", "bsi", "futures"}:
-                v = validate_official_block(v, price_date, {"inst":"三大法人","margin":"資券","bsi":"借券","futures":"外資期貨"}.get(key, key))
             context[key] = v
     return context
 def _streak(values: List[int], pos: str, neg: str) -> str:
@@ -268,19 +270,31 @@ def _tw_market_status(latest_price_date: str) -> str:
 def _finmind_query(dataset: str, stock_id: str, start: str, end: str | None = None) -> List[Dict[str, object]]:
     import requests
     url = "https://api.finmindtrade.com/api/v4/data"
-    params = {"dataset": dataset, "data_id": stock_id, "start_date": start}
-    if end:
-        params["end_date"] = end
     token = os.environ.get("FINMIND_TOKEN") or os.environ.get("FINMIND_API_TOKEN")
+    base = {"dataset": dataset, "data_id": stock_id, "start_date": start}
+    if end:
+        base["end_date"] = end
     if token:
-        params["token"] = token
-    r = requests.get(url, params=params, timeout=10, headers={"User-Agent": "TINO-V12/1.1"})
-    r.raise_for_status()
-    js = r.json()
-    data = js.get("data") if isinstance(js, dict) else None
-    if not isinstance(data, list):
-        return []
-    return data
+        base["token"] = token
+    # Some FinMind deployments are picky when end_date is present. Try strict first,
+    # then start-only. Never return fake rows.
+    attempts = [base]
+    if end:
+        b2 = dict(base); b2.pop("end_date", None); attempts.append(b2)
+    last_exc = None
+    for params in attempts:
+        try:
+            r = requests.get(url, params=params, timeout=10, headers={"User-Agent": "TINO-V12/1.1"})
+            r.raise_for_status()
+            js = r.json()
+            data = js.get("data") if isinstance(js, dict) else None
+            if isinstance(data, list) and data:
+                return data
+        except Exception as exc:
+            last_exc = exc
+    if last_exc:
+        raise last_exc
+    return []
 def _to_int(value) -> int | None:
     if value in (None, "", "None", "nan"):
         return None
@@ -408,11 +422,11 @@ def _merge_official_context(ticker: TickerInfo, context: Dict[str, object], pric
     try:
         context["inst"] = validate_official_block(_fetch_finmind_inst(ticker.resolved_symbol, price_date), price_date, "三大法人")
     except Exception as exc:
-        context["inst"] = _empty_inst(price_date, f"法人抓取失敗：{type(exc).__name__}")
+        context["inst"] = _empty_inst(price_date, f"法人抓取失敗：{type(exc).__name__}: {str(exc)[:120]}")
     try:
         context["margin"] = validate_official_block(_fetch_finmind_margin(ticker.resolved_symbol, price_date), price_date, "資券")
     except Exception as exc:
-        context["margin"] = _empty_margin(price_date, f"資券抓取失敗：{type(exc).__name__}")
+        context["margin"] = _empty_margin(price_date, f"資券抓取失敗：{type(exc).__name__}: {str(exc)[:120]}")
     try:
         context["tv_pressure"] = _tv_pressure_context(
             ticker.resolved_symbol,
