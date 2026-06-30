@@ -138,16 +138,8 @@ def _us_session_words(price: PriceFrame) -> Dict[str, str]:
 def _signal_map(signals: List[SignalPacket]) -> Dict[str, SignalPacket]:
     return {s.module: s for s in signals}
 def _formal_ok(block: dict) -> bool:
-    source = str((block or {}).get("source", ""))
-    return bool((block or {}).get("accepted", False)) and "V12_DERIVED_PROXY" not in source and "PROXY" not in source.upper()
-
-def _official_missing_line(block: dict, label: str) -> str:
-    if not isinstance(block, dict):
-        return f"{label}｜官方資料未取得｜不以記憶體或固定值補數字"
-    reason = str(block.get("reason") or "官方資料未取得")
-    source = str(block.get("source") or "OFFICIAL_FETCH_FAILED")
-    date = str(block.get("date") or "無有效日期")
-    return f"{label}｜官方資料未取得｜來源 {source}｜日期 {date}｜{reason}｜不以記憶體或固定值補數字"
+    source = str(block.get("source", ""))
+    return bool(block.get("accepted", False)) and "V12_DERIVED_PROXY" not in source and "PROXY" not in source.upper()
 def _high_magnet_guard(final_t1: float, high: float, low: float) -> float:
     span = max(high - low, 0.01)
     return min(final_t1, high - span * HIGH_MAGNET_BUFFER)
@@ -185,7 +177,7 @@ def _inst_line(inst: dict, multiline: bool = True) -> str:
         f"法人日期：{inst.get('date')}｜來源：{inst.get('source')}｜{inst.get('reason','')}",
     ])
 def _inst_radar_line(inst: dict, proxy: dict | None = None) -> str:
-    return _inst_line(inst, True) if _formal_ok(inst) else _official_missing_line(inst, "三大法人")
+    return _inst_line(inst, True) if _formal_ok(inst) else ""
 def _margin_line(margin: dict, multiline: bool = True) -> str:
     if not _formal_ok(margin):
         return ""
@@ -196,7 +188,7 @@ def _margin_line(margin: dict, multiline: bool = True) -> str:
         f"券資比 {_fmt(margin.get('ratio'), 2)}%｜資券日期：{margin.get('date')}｜來源：{margin.get('source')}｜{margin.get('reason','')}",
     ])
 def _margin_radar_line(margin: dict, proxy: dict | None = None) -> str:
-    return _margin_line(margin, True) if _formal_ok(margin) else _official_missing_line(margin, "資券/融資融券")
+    return _margin_line(margin, True) if _formal_ok(margin) else ""
 def _chip_summary(inst: dict, margin: dict, bsi: dict) -> str:
     parts = []
     if _formal_ok(inst):

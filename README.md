@@ -13,3 +13,10 @@
 ## 驗證
 - python -m py_compile *.py
 - TINO_OFFLINE_TEST=1 python smoke_tests.py
+
+
+## V22 Google Sheet Memory
+Secrets required:
+ADMIN_PASSWORD, GSPREAD_SHEET_ID, [gcp_service_account].
+Worksheets: prediction_log, audit_log, ticker_profiles, system_status.
+Local memory remains the fast cache; Google Sheet is the durable memory across redeploy/reboot.

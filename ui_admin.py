@@ -18,7 +18,7 @@ from learning import (
     suggest_from_forecast,
     today_prediction_vs_actual,
 )
-from memory_store import MEMORY_DIR
+from memory_store import MEMORY_DIR, storage_status, force_sync_to_google_sheet, test_google_sheet_connection
 
 
 def _secret_value(st, key: str) -> str:
@@ -149,8 +149,47 @@ def _learning_panel(st, forecast):
         st.markdown("**Recent audits**")
         _df(st, tables.get("audits", [])[-10:], "尚無 audit log。")
         st.markdown("**Storage status**")
-        st.caption(f"Memory path：{MEMORY_DIR}")
-        st.caption(f"Predictions：{len(tables.get('predictions', []))}｜Audits：{len(tables.get('audits', []))}｜Profiles：{len(tables.get('profiles', []))}")
+        try:
+            ss = storage_status()
+            mode = ss.get("storage_mode", "local_only")
+            connected = "🟢 Google Sheet Connected" if ss.get("google_sheet_connected") else "🟡 Local fallback / 未連線"
+            st.caption(f"{connected}｜Mode：{mode}")
+            st.caption(f"Predictions：{ss.get('prediction_count', 0)}｜Audits：{ss.get('audit_count', 0)}｜Profiles：{ss.get('profile_count', 0)}")
+            st.caption(f"Last sync：{ss.get('last_sync_tw') or '尚無'}")
+            st.caption(f"Memory path：{ss.get('memory_dir')}")
+            if ss.get("last_error"):
+                st.warning(f"Storage warning：{ss.get('last_error')}")
+                if ss.get("last_traceback"):
+                    st.code(str(ss.get("last_traceback"))[-3000:], language="python")
+                if ss.get("last_debug"):
+                    st.markdown("**Google Sheet Debug Steps**")
+                    try:
+                        _df(st, ss.get("last_debug", {}).get("steps", []), "尚無 debug steps。")
+                    except Exception:
+                        pass
+            st.caption('Secrets 建議：ADMIN_PASSWORD / GSPREAD_SHEET_ID / GCP_SERVICE_ACCOUNT_B64')
+            cgs1, cgs2 = st.columns([1, 1])
+            with cgs1:
+                if st.button("測試 Google Sheet", key="test_google_sheet_connection"):
+                    result = test_google_sheet_connection()
+                    if result.get("test_ok"):
+                        st.success("Google Sheet 連線成功，已寫入 system_status。")
+                    else:
+                        st.warning(f"Google Sheet 未連線：{result.get('last_error') or result.get('error')}")
+                        if result.get("steps"):
+                            _df(st, result.get("steps", []), "尚無 debug steps。")
+                        if result.get("traceback"):
+                            st.code(str(result.get("traceback"))[-3000:], language="python")
+            with cgs2:
+                if st.button("同步 Local 記憶到 Google Sheet", key="force_sync_google_sheet"):
+                    result = force_sync_to_google_sheet()
+                    if result.get("manual_sync_ok"):
+                        st.success("同步完成：Local → Google Sheet")
+                    else:
+                        st.warning(f"同步未完全成功：{result.get('last_error')}")
+        except Exception as exc:
+            st.caption(f"Memory path：{MEMORY_DIR}")
+            st.warning(f"Storage status 暫時無法讀取：{type(exc).__name__}: {exc}")
 
 def render_admin(st, forecast):
     authed = _admin_gate(st)
