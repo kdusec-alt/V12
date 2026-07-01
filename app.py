@@ -6,7 +6,7 @@ import traceback
 import time
 import streamlit as st
 
-st.set_page_config(page_title="TINO Stock Engine", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="系統化分析", layout="wide", initial_sidebar_state="collapsed")
 
 
 def _theme():
