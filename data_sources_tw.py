@@ -625,13 +625,15 @@ def _pick_fast_price(symbol: str) -> Dict[str, object]:
         _enrich_price_freshness(_yahoo_quote_fast(symbol)),
         _enrich_price_freshness(_yahoo_chart_intraday(symbol)),
     ]
+    mis_candidate = candidates[0] if candidates else {}
+    mis_debug = mis_candidate.get("mis_debug") if isinstance(mis_candidate, dict) else None
     google_ref = fetch_google_finance_reference(symbol)
     accepted = [c for c in candidates if c.get("accepted")]
     if not accepted:
         reason = " ".join([f"{c.get('source','src')}={c.get('reason')}" for c in candidates])
         if google_ref.get("accepted"):
             reason += f" GoogleFinance_Reference={google_ref.get('last')}"
-        return {"accepted": False, "reason": reason.strip()}
+        return {"accepted": False, "reason": reason.strip(), "mis_debug": mis_debug or {}}
 
     def source_priority(c):
         src = str(c.get("source") or "")
@@ -657,6 +659,9 @@ def _pick_fast_price(symbol: str) -> Dict[str, object]:
         best["price_status"] = str(best.get("price_status") or "延遲資料")
         best["price_time_label"] = f"{best.get('price_time_label','價格時間：--｜來源：延遲資料｜狀態：延遲資料')}｜盤中決策：價格待確認"
 
+    # Preserve MIS diagnostic breadcrumb even when Yahoo was selected as fallback.
+    if mis_debug:
+        best["mis_debug"] = mis_debug
     notes = [f"{c.get('source')}@{c.get('source_time_hm')}:{c.get('last')}:{c.get('price_status')}" for c in accepted if c is not best]
     # Admin/debug breadcrumb: why MIS or other sources were not used. Kept out of front decision text.
     reject_notes = [f"{c.get('source','src')}拒絕:{c.get('reason')}" for c in candidates if not c.get('accepted') and c.get('reason')]
@@ -690,6 +695,7 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
                     "age_seconds": fast.get("age_seconds"), "status": fast.get("price_status"),
                     "label": fast.get("price_time_label"), "cross_source_note": fast.get("cross_source_note", ""),
                     "decision_blocked": bool(fast.get("decision_blocked")),
+                    "mis_debug": fast.get("mis_debug", {}),
                 }
                 return PriceFrame(ticker=ticker, truth=make_truth(str(fast.get("source", "RealtimeQuote")), d, False, True, str(fast.get("price_time_label") or "價格快速同步｜日K待補"), "intraday_fast" if not fast.get("stale") else "intraday_delayed"), open=open_, high=high, low=low, last=close, previous_close=previous_close, volume=vol, vwap=vwap, atr14=float(base.get("atr14") or max(close * 0.03, 0.01)), recent_closes=s["closes"], recent_highs=s["highs"], recent_lows=s["lows"], recent_volumes=s["volumes"], price_date=d, market_status=_tw_market_status(d), context=context)
             return _fallback_price(ticker, "yfinance 無資料；快速報價也未取得")
@@ -758,9 +764,10 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
                 "age_seconds": fast.get("age_seconds"), "status": fast.get("price_status"),
                 "label": fast.get("price_time_label"), "cross_source_note": fast.get("cross_source_note", ""),
                 "decision_blocked": bool(fast.get("decision_blocked")),
+                "mis_debug": fast.get("mis_debug", {}),
             }
         else:
-            context["price_meta"] = {"source": source_name, "status": "日K參考", "label": f"價格時間：{price_date}｜來源：{source_name}｜狀態：日K參考", "decision_blocked": bool(_is_tw_intraday_now())}
+            context["price_meta"] = {"source": source_name, "status": "日K參考", "label": f"價格時間：{price_date}｜來源：{source_name}｜狀態：日K參考", "decision_blocked": bool(_is_tw_intraday_now()), "mis_debug": fast.get("mis_debug", {}) if isinstance(fast, dict) else {}}
         return PriceFrame(
             ticker=ticker,
             truth=make_truth(str(source_name), price_date, False, True, truth_reason, "intraday_delayed" if fast.get("accepted") and fast.get("stale") else freshness),

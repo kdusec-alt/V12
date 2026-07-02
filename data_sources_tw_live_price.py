@@ -48,6 +48,38 @@ def _mis_source_name(prefix: str) -> str:
     return "TPEX_MIS_Realtime" if prefix == "otc" else "TWSE_MIS_Realtime"
 
 
+def _mis_debug_base(symbol: str, prefix: str, ex_ch: str) -> Dict[str, Any]:
+    """Build a compact Admin-only breadcrumb for MIS diagnosis.
+
+    This object is returned inside the price candidate and is intended for
+    Admin/Debug panels only.  It must not be rendered in the V9 front panel.
+    """
+    return {
+        "mis_tried": True,
+        "mis_market": "TPEX" if prefix == "otc" else "TWSE",
+        "mis_symbol": ex_ch,
+        "mis_source": _mis_source_name(prefix),
+        "mis_http_status": None,
+        "mis_raw_ok": False,
+        "mis_raw_rows": 0,
+        "mis_row_keys": [],
+        "mis_parsed_last": None,
+        "mis_parsed_high": None,
+        "mis_parsed_low": None,
+        "mis_parsed_time": None,
+        "mis_last_source": None,
+        "mis_reject_reason": None,
+    }
+
+
+def _attach_mis_debug(payload: Dict[str, object], debug: Dict[str, Any], *, reason: str | None = None) -> Dict[str, object]:
+    if reason:
+        debug["mis_reject_reason"] = reason
+        payload.setdefault("reason", reason)
+    payload["mis_debug"] = debug
+    return payload
+
+
 def _build_raw_time(row: Dict[str, Any], fetched_at: datetime) -> tuple[str, str]:
     """Return (price_date, raw_time) for V12 freshness guard.
 
@@ -82,7 +114,7 @@ def _build_raw_time(row: Dict[str, Any], fetched_at: datetime) -> tuple[str, str
     return fetched_at.date().isoformat(), fetched_at.isoformat()
 
 
-def _parse_mis_row(symbol: str, row: Dict[str, Any], prefix: str, fetched_at: datetime) -> Dict[str, object]:
+def _parse_mis_row(symbol: str, row: Dict[str, Any], prefix: str, fetched_at: datetime, debug: Dict[str, Any] | None = None) -> Dict[str, object]:
     last = _num(row.get("z"))
     bid = _first_num_from_level_text(row.get("b"))
     ask = _first_num_from_level_text(row.get("a"))
@@ -101,7 +133,11 @@ def _parse_mis_row(symbol: str, row: Dict[str, Any], prefix: str, fetched_at: da
             last = bid
             last_source = "bid_proxy"
     if last is None or last <= 0:
-        return {"accepted": False, "source": _mis_source_name(prefix), "reason": "twse_mis_no_valid_last_bid_ask"}
+        payload = {"accepted": False, "source": _mis_source_name(prefix), "reason": "twse_mis_no_valid_last_bid_ask"}
+        if debug is not None:
+            debug["mis_parsed_last"] = None
+            return _attach_mis_debug(payload, debug, reason="twse_mis_no_valid_last_bid_ask")
+        return payload
 
     open_ = _num(row.get("o")) or last
     high = _num(row.get("h")) or max(open_, last)
@@ -111,6 +147,14 @@ def _parse_mis_row(symbol: str, row: Dict[str, Any], prefix: str, fetched_at: da
     lots = _num(row.get("v")) or _num(row.get("tv")) or 0.0
     volume = lots * 1000.0 if lots and lots < 10_000_000 else lots
     price_date, raw_time = _build_raw_time(row, fetched_at)
+    if debug is not None:
+        debug.update({
+            "mis_parsed_last": float(last),
+            "mis_parsed_high": float(max(high, last)),
+            "mis_parsed_low": float(min(low, last)),
+            "mis_parsed_time": raw_time,
+            "mis_last_source": last_source,
+        })
 
     return {
         "accepted": True,
@@ -126,6 +170,7 @@ def _parse_mis_row(symbol: str, row: Dict[str, Any], prefix: str, fetched_at: da
         "raw_time": raw_time,
         "mis_symbol": f"{prefix}_{_code(symbol)}.tw",
         "mis_last_source": last_source,
+        "mis_debug": debug or {},
     }
 
 
@@ -147,6 +192,7 @@ def fetch_twse_mis_live_price(symbol: str) -> Dict[str, object]:
         code = _code(symbol)
         prefix = _market_prefix(symbol)
         ex_ch = f"{prefix}_{code}.tw"
+        debug = _mis_debug_base(symbol, prefix, ex_ch)
         fetched_at = datetime.now(ZoneInfo("Asia/Taipei"))
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
@@ -171,25 +217,41 @@ def fetch_twse_mis_live_price(symbol: str) -> Dict[str, object]:
 
         params = {"ex_ch": ex_ch, "json": "1", "delay": "0", "_": int(_time.time() * 1000)}
         resp = sess.get("https://mis.twse.com.tw/stock/api/getStockInfo.jsp", params=params, timeout=5)
+        debug["mis_http_status"] = getattr(resp, "status_code", None)
         raw_text = resp.text or ""
         try:
             data = resp.json()
+            debug["mis_raw_ok"] = True
         except Exception:
-            return {"accepted": False, "source": _mis_source_name(prefix), "reason": f"twse_mis_non_json:{resp.status_code}:{raw_text[:80]}"}
+            reason = f"twse_mis_non_json:{resp.status_code}:{raw_text[:80]}"
+            return _attach_mis_debug({"accepted": False, "source": _mis_source_name(prefix), "reason": reason}, debug, reason=reason)
 
         arr = (data or {}).get("msgArray") or []
+        debug["mis_raw_rows"] = len(arr)
         row = arr[0] if arr else None
+        if row:
+            try:
+                debug["mis_row_keys"] = sorted(list(row.keys()))[:40]
+            except Exception:
+                debug["mis_row_keys"] = []
         if not row:
             # Keep the exact symbol visible in Admin Debug if needed.
-            return {"accepted": False, "source": _mis_source_name(prefix), "reason": f"twse_mis_empty:{ex_ch}"}
+            reason = f"twse_mis_empty:{ex_ch}"
+            return _attach_mis_debug({"accepted": False, "source": _mis_source_name(prefix), "reason": reason}, debug, reason=reason)
 
-        parsed = _parse_mis_row(symbol, row, prefix, fetched_at)
+        parsed = _parse_mis_row(symbol, row, prefix, fetched_at, debug)
         if not parsed.get("accepted"):
-            parsed["reason"] = f"{parsed.get('reason')}:{ex_ch}"
+            reason = f"{parsed.get('reason')}:{ex_ch}"
+            parsed["reason"] = reason
+            if isinstance(parsed.get("mis_debug"), dict):
+                parsed["mis_debug"]["mis_reject_reason"] = reason
         return parsed
     except Exception as exc:
         prefix = _market_prefix(symbol)
-        return {"accepted": False, "source": _mis_source_name(prefix), "reason": f"twse_mis_error:{type(exc).__name__}"}
+        ex_ch = f"{prefix}_{_code(symbol)}.tw"
+        debug = _mis_debug_base(symbol, prefix, ex_ch)
+        reason = f"twse_mis_error:{type(exc).__name__}"
+        return _attach_mis_debug({"accepted": False, "source": _mis_source_name(prefix), "reason": reason}, debug, reason=reason)
 
 
 
