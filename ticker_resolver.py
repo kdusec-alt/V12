@@ -10,6 +10,7 @@ TW_NAME_MAP = {
     "2454": ("聯發科", "2454.TW", "TWSE"),
     "6770": ("力積電", "6770.TW", "TWSE"),
     "6586": ("醣基", "6586.TWO", "TPEX"),
+    "5483": ("中美晶", "5483.TWO", "TPEX"),
     "00919": ("群益台灣精選高息", "00919.TW", "TWSE"),
     "2308": ("台達電", "2308.TW", "TWSE"),
     "3037": ("欣興", "3037.TW", "TWSE"),
@@ -22,6 +23,7 @@ TW_NAME_ALIAS = {
     "旺宏": "2337", "MACRONIX": "2337",
     "力積電": "6770",
     "醣基": "6586",
+    "中美晶": "5483", "SAS": "5483",
     "台達電": "2308",
     "欣興": "3037", "欣興電子": "3037",
     "南亞科": "2408",
@@ -45,19 +47,39 @@ def _clean(raw: str) -> str:
     return str(raw or "").strip().upper().replace(" ", "")
 
 
+def _split_tw_suffix(text: str) -> tuple[str, str | None]:
+    """Split Taiwan market suffix safely.
+
+    IMPORTANT:
+    - Check .TWO before .TW because .TWO starts with .TW.
+    - Never convert the O in .TWO into 0.
+    """
+    if text.endswith(".TWO"):
+        return text[:-4], ".TWO"
+    if text.endswith(".TW"):
+        return text[:-3], ".TW"
+    return text, None
+
+
 def resolve_ticker(raw: str) -> TickerInfo:
     text = _clean(raw)
     if not text:
         raise ValueError("Ticker 不可為空")
 
-    base = text.replace(".TW", "").replace(".TWO", "")
+    base, explicit_suffix = _split_tw_suffix(text)
+
     if base in TW_NAME_ALIAS:
         base = TW_NAME_ALIAS[base]
-        text = base
+        explicit_suffix = None
+
     if re.fullmatch(r"\d{4,5}[A-Z]?", base):
         name, symbol, exchange = TW_NAME_MAP.get(base, (base, f"{base}.TW", "TWSE"))
-        if text.endswith(".TWO"):
+
+        if explicit_suffix == ".TWO":
             symbol, exchange = f"{base}.TWO", "TPEX"
+        elif explicit_suffix == ".TW":
+            symbol, exchange = f"{base}.TW", "TWSE"
+
         asset_type = "etf" if base in ETF_CODES or base.startswith("00") else "stock"
         pct = TWO_PRICE_LIMIT_PCT if symbol.endswith(".TWO") else TW_PRICE_LIMIT_PCT
         return TickerInfo(raw=raw, resolved_symbol=symbol, name=name, market="TW", asset_type=asset_type, exchange=exchange, currency="TWD", price_limit_pct=pct)
