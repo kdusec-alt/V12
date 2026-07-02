@@ -260,7 +260,8 @@ def _decision_card(price: PriceFrame, raw: RawForecast, score: float, final_t1: 
     one = f"{prefix}：站穩 {attack:.2f} 可攻，跌回 {low1:.2f} 才分批，{no_chase:.2f} 上方急拉不追。" if bullish else f"{prefix}：不是不能買，是不能亂買；殺到 {low1:.2f} 附近只試小單，{low2:.2f} 才第二批，破 {stop:.2f} 收不回停。"
     chg = last - float(price.previous_close or last)
     chgp = chg / float(price.previous_close or last) * 100 if float(price.previous_close or last) else 0.0
-    return {
+    price_meta = ((price.context or {}).get("price_meta") or {})
+    card = {
         "標題": head, "主訊息": one, "低接第一批": round(low1, 2), "低接第二批": round(low2, 2),
         "攻擊": f"站穩 {attack:.2f} 可攻" if bullish else f"{low1:.2f} 試單｜{low2:.2f} 再接",
         "轉強": f"突破 {turn:.2f} 加碼", "防守": round(stop, 2), "不追": round(no_chase, 2),
@@ -269,8 +270,16 @@ def _decision_card(price: PriceFrame, raw: RawForecast, score: float, final_t1: 
         "資料標題": words["info"], "開盤": round(float(price.open), 2), "現價": round(last, 2),
         "最高": round(float(price.high), 2), "最低": round(float(price.low), 2),
         "漲跌": round(chg, 2), "漲跌幅": round(chgp, 2), "VWAP位置": "VWAP 下方" if last < vwap else "VWAP 上方",
-        "價格時間": ((price.context or {}).get("price_meta") or {}).get("label", ""),
+        "價格時間": price_meta.get("label", ""),
     }
+    if bool(price_meta.get("decision_blocked")):
+        card["標題"] = "AI進場決策卡｜價格待確認｜不採用延遲價"
+        card["主訊息"] = "價格資料延遲或未通過新鮮度驗證；只看風險區間，不用延遲價做正式進場。"
+        card["攻擊"] = "等待即時價確認"
+        card["轉強"] = "即時價恢復後再判斷"
+        card["一句話"] = "價格待確認，不採用延遲價。"
+        card["操作主軸"] = "價格待確認"
+    return card
 def _deep_report(price: PriceFrame, raw: RawForecast, final: Dict[str, float], decision: Dict[str, object], radar: Dict[str, str], signals: List[SignalPacket], confidence: float, news_items: List[NewsItem]) -> str:
     inst, margin, bsi = price.context.get("inst", {}), price.context.get("margin", {}), price.context.get("bsi", {})
     macro, tv = price.context.get("macro", {}), price.context.get("tv_pressure", {})

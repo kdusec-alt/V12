@@ -92,3 +92,38 @@ def fetch_twse_mis_live_price(symbol: str) -> Dict[str, object]:
         }
     except Exception as exc:
         return {"accepted": False, "reason": f"twse_mis_error:{type(exc).__name__}"}
+
+
+
+def fetch_google_finance_reference(symbol: str) -> Dict[str, object]:
+    """Best-effort Google Finance reference quote.
+
+    Google Finance is not a stable official API.  V12 uses this only as a
+    third-source reference note; it must never override TWSE/TPEX MIS or Yahoo.
+    """
+    if os.environ.get("TINO_OFFLINE_TEST") == "1":
+        return {"accepted": False, "reason": "offline"}
+    try:
+        import re
+        import requests
+        code = _code(symbol)
+        exch = "TWO" if str(symbol).upper().endswith(".TWO") else "TPE"
+        url = f"https://www.google.com/finance/quote/{code}:{exch}"
+        html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3).text
+        # Common Google Finance visible price block: <div class="YMlKec fxKbKc">NT$74.90</div>
+        m = re.search(r'class="YMlKec[^"]*"[^>]*>\s*(?:NT\$|TWD|\$)?\s*([0-9,]+(?:\.[0-9]+)?)\s*<', html)
+        if not m:
+            return {"accepted": False, "reason": "google_finance_no_price"}
+        last = _num(m.group(1))
+        if last is None or last <= 0:
+            return {"accepted": False, "reason": "google_finance_invalid_price"}
+        return {
+            "accepted": True,
+            "source": "GoogleFinance_Reference",
+            "last": float(last),
+            "price_date": today_taipei_date(),
+            "raw_time": None,
+            "reference_only": True,
+        }
+    except Exception as exc:
+        return {"accepted": False, "reason": f"google_finance_error:{type(exc).__name__}"}

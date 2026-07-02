@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from models import NewsItem, PriceFrame, TickerInfo
 from truth_guard import make_truth, parse_date_safe, today_taipei_date, validate_official_block
-from data_sources_tw_live_price import fetch_twse_mis_live_price
+from data_sources_tw_live_price import fetch_twse_mis_live_price, fetch_google_finance_reference
 TW_SAMPLE = {"6770.TW": dict(open=83.20, high=85.20, low=78.10, last=78.30, previous_close=83.20, volume=86000, vwap=80.53, atr14=5.99), "6586.TWO": dict(open=123.50, high=130.50, low=114.00, last=126.00, previous_close=120.50, volume=4200, vwap=123.50, atr14=9.50), "2454.TW": dict(open=4055.0, high=4145.0, low=4025.0, last=4055.0, previous_close=4100.0, volume=6800, vwap=4075.0, atr14=145.0), "2337.TW": dict(open=158.0, high=161.5, low=154.5, last=156.0, previous_close=159.0, volume=15000, vwap=157.8, atr14=7.3), "2308.TW": dict(open=1815.0, high=1855.0, low=1785.0, last=1810.0, previous_close=1835.0, volume=12200, vwap=1816.7, atr14=65.0), "00919.TW": dict(open=23.25, high=23.35, low=23.10, last=23.18, previous_close=23.22, volume=50000, vwap=23.21, atr14=0.24), "5469.TW": dict(open=90.8, high=94.0, low=90.0, last=91.8, previous_close=87.4, volume=19000, vwap=91.93, atr14=4.2)}
 BULL = ["獲利", "成長", "EPS", "營收", "買超", "創高", "法說", "AI", "訂單", "擴產", "回補", "強勢", "漲"]
 BEAR = ["虧損", "減損", "賣超", "下修", "衰退", "跌", "處置", "警示", "庫存", "法說虧損", "利空"]
@@ -613,31 +613,52 @@ def _enrich_price_freshness(row: Dict[str, object]) -> Dict[str, object]:
 
 
 def _pick_fast_price(symbol: str) -> Dict[str, object]:
-    # V8.3: fetch multiple fast sources and choose freshest timestamp.
-    # Never blindly prefer MIS if Yahoo is newer; stale price must be visible.
+    # V8.4: TWSE/TPEX MIS is the primary intraday decision source.
+    # Yahoo is backup; Google Finance is reference-only.  Stale sources are
+    # allowed for display but are marked decision_blocked so delayed quotes do
+    # not silently drive the trading card.
     candidates = [
         _enrich_price_freshness(fetch_twse_mis_live_price(symbol)),
-        _enrich_price_freshness(_yahoo_chart_intraday(symbol)),
         _enrich_price_freshness(_yahoo_quote_fast(symbol)),
+        _enrich_price_freshness(_yahoo_chart_intraday(symbol)),
     ]
+    google_ref = fetch_google_finance_reference(symbol)
     accepted = [c for c in candidates if c.get("accepted")]
     if not accepted:
-        return {"accepted": False, "reason": " ".join([f"{c.get('source','src')}={c.get('reason')}" for c in candidates])}
+        reason = " ".join([f"{c.get('source','src')}={c.get('reason')}" for c in candidates])
+        if google_ref.get("accepted"):
+            reason += f" GoogleFinance_Reference={google_ref.get('last')}"
+        return {"accepted": False, "reason": reason.strip()}
 
-    # Fresh first. If all are stale, still return the newest but mark it delayed.
-    # Prefer Yahoo on tie because Yahoo quote/page often refreshes faster than MIS in Streamlit Cloud.
-    def rank(c):
-        age = int(c.get("age_seconds") if c.get("age_seconds") is not None else 999999)
-        fresh = 0 if not c.get("stale") else 1
+    def source_priority(c):
         src = str(c.get("source") or "")
-        provider_priority = 0 if src.startswith("Yahoo") else 1
-        return (fresh, age, provider_priority)
+        if "MIS" in src:
+            return 0
+        if src == "YahooQuote_Fast":
+            return 1
+        if src == "YahooChart_1m":
+            return 2
+        return 9
 
-    accepted.sort(key=rank)
-    best = accepted[0]
-    others = ";".join([f"{c.get('source')}@{c.get('source_time_hm')}:{c.get('last')}" for c in accepted[1:]])
-    if others:
-        best["cross_source_note"] = others
+    fresh = [c for c in accepted if not c.get("stale")]
+    if fresh:
+        # MIS first when it is fresh; otherwise Yahoo quote/chart backup.
+        fresh.sort(key=lambda c: (source_priority(c), int(c.get("age_seconds") or 999999)))
+        best = fresh[0]
+        best["decision_blocked"] = False
+    else:
+        # All sources are delayed: show newest reference, but block formal decision.
+        accepted.sort(key=lambda c: int(c.get("age_seconds") or 999999))
+        best = accepted[0]
+        best["decision_blocked"] = True
+        best["price_status"] = str(best.get("price_status") or "延遲資料")
+        best["price_time_label"] = f"{best.get('price_time_label','價格時間：--｜來源：延遲資料｜狀態：延遲資料')}｜盤中決策：價格待確認"
+
+    notes = [f"{c.get('source')}@{c.get('source_time_hm')}:{c.get('last')}:{c.get('price_status')}" for c in accepted if c is not best]
+    if google_ref.get("accepted"):
+        notes.append(f"GoogleFinance_Reference:{google_ref.get('last')}:僅交叉參考")
+    if notes:
+        best["cross_source_note"] = ";".join(notes)
     return best
 
 
@@ -662,6 +683,7 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
                     "source": fast.get("source"), "source_time": fast.get("source_time"), "source_time_hm": fast.get("source_time_hm"),
                     "age_seconds": fast.get("age_seconds"), "status": fast.get("price_status"),
                     "label": fast.get("price_time_label"), "cross_source_note": fast.get("cross_source_note", ""),
+                    "decision_blocked": bool(fast.get("decision_blocked")),
                 }
                 return PriceFrame(ticker=ticker, truth=make_truth(str(fast.get("source", "RealtimeQuote")), d, False, True, str(fast.get("price_time_label") or "價格快速同步｜日K待補"), "intraday_fast" if not fast.get("stale") else "intraday_delayed"), open=open_, high=high, low=low, last=close, previous_close=previous_close, volume=vol, vwap=vwap, atr14=float(base.get("atr14") or max(close * 0.03, 0.01)), recent_closes=s["closes"], recent_highs=s["highs"], recent_lows=s["lows"], recent_volumes=s["volumes"], price_date=d, market_status=_tw_market_status(d), context=context)
             return _fallback_price(ticker, "yfinance 無資料；快速報價也未取得")
@@ -729,9 +751,10 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
                 "source": fast.get("source"), "source_time": fast.get("source_time"), "source_time_hm": fast.get("source_time_hm"),
                 "age_seconds": fast.get("age_seconds"), "status": fast.get("price_status"),
                 "label": fast.get("price_time_label"), "cross_source_note": fast.get("cross_source_note", ""),
+                "decision_blocked": bool(fast.get("decision_blocked")),
             }
         else:
-            context["price_meta"] = {"source": source_name, "status": "日K參考", "label": f"價格時間：{price_date}｜來源：{source_name}｜狀態：日K參考"}
+            context["price_meta"] = {"source": source_name, "status": "日K參考", "label": f"價格時間：{price_date}｜來源：{source_name}｜狀態：日K參考", "decision_blocked": bool(_is_tw_intraday_now())}
         return PriceFrame(
             ticker=ticker,
             truth=make_truth(str(source_name), price_date, False, True, truth_reason, "intraday_delayed" if fast.get("accepted") and fast.get("stale") else freshness),

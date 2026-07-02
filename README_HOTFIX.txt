@@ -1,13 +1,20 @@
-TINO V12 v8.3 Price Timestamp Guard Hotfix
+TINO V12 v8.4｜MIS First + Delayed Price Blocker Hotfix Only
 
-只替換以下 3 個檔案：
+Replace only these files:
 - data_sources_tw.py
+- data_sources_tw_live_price.py
 - orchestrator.py
-- ui_v9_battle_panel.py
 
-修正重點：
-1. 台股價格同時抓 MIS / Yahoo Chart / Yahoo Quote，依 source_time 選最新，不再盲目優先 MIS 舊快照。
-2. 每筆價格加上 source_time、age_seconds、price_status。
-3. 前台「盤中資料」下方顯示：價格時間｜來源｜狀態。
-4. stale 價格會標示延遲，不再假裝即時。
-5. 不碰 Google Sheet、Auto Learning、法人資券、基本面、V9 UI 主結構。
+Scope:
+- TWSE/TPEX MIS is first priority for Taiwan intraday decision price.
+- Yahoo Quote / Yahoo Chart are backup only.
+- Google Finance is reference-only cross-check; it never overrides MIS/Yahoo.
+- If every live source is stale during market hours, the price can display as reference but decision_blocked=True.
+- Frontend decision card will show 「價格待確認｜不採用延遲價」 instead of using delayed quote as formal entry/attack price.
+
+Not touched:
+- Google Sheet
+- Auto Learning / Memory
+- institutional / margin / chip fetchers
+- fundamentals cross-check
+- V9 panel layout
