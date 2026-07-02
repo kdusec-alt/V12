@@ -544,18 +544,101 @@ def _yahoo_quote_fast(symbol: str) -> Dict[str, object]:
         return {"accepted": False, "reason": f"quote_error:{type(exc).__name__}"}
 
 
+def _tw_now():
+    return datetime.now(ZoneInfo("Asia/Taipei"))
+
+
+def _is_tw_intraday_now(now=None) -> bool:
+    now = now or _tw_now()
+    if now.weekday() >= 5:
+        return False
+    return time(9, 0) <= now.time() <= time(13, 35)
+
+
+def _parse_price_time(raw_time, price_date: str | None = None):
+    """Normalize MIS/Yahoo time into Asia/Taipei datetime.
+
+    raw_time can be Unix seconds, ISO-like text, or HH:MM:SS from TWSE MIS.
+    Never let the UI guess freshness from price alone.
+    """
+    if raw_time in (None, "", "-", "--"):
+        return None
+    try:
+        if isinstance(raw_time, (int, float)) or str(raw_time).strip().isdigit():
+            return datetime.fromtimestamp(int(float(raw_time)), tz=ZoneInfo("Asia/Taipei"))
+        txt = str(raw_time).strip()
+        if re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}:\d{2}$", txt):
+            return datetime.fromisoformat(txt).replace(tzinfo=ZoneInfo("Asia/Taipei"))
+        if re.match(r"^\d{1,2}:\d{2}:\d{2}$", txt):
+            d = parse_date_safe(str(price_date or today_taipei_date()))
+            return datetime.fromisoformat(f"{d}T{txt}").replace(tzinfo=ZoneInfo("Asia/Taipei"))
+    except Exception:
+        return None
+    return None
+
+
+def _enrich_price_freshness(row: Dict[str, object]) -> Dict[str, object]:
+    if not row.get("accepted"):
+        return row
+    out = dict(row)
+    dt = _parse_price_time(out.get("raw_time"), str(out.get("price_date") or today_taipei_date()))
+    now = _tw_now()
+    if dt:
+        age = max(0, int((now - dt).total_seconds()))
+        out["source_time"] = dt.isoformat()
+        out["source_time_hm"] = dt.strftime("%H:%M:%S")
+        out["age_seconds"] = age
+        if _is_tw_intraday_now(now):
+            if age <= 90:
+                status = "盤中快報"
+            elif age <= 600:
+                status = f"延遲{age//60}分"
+            else:
+                status = "延遲資料"
+        else:
+            status = "非盤中參考"
+    else:
+        out["source_time"] = ""
+        out["source_time_hm"] = "--:--"
+        out["age_seconds"] = 999999 if _is_tw_intraday_now(now) else 0
+        status = "時間未標示"
+    src = str(out.get("source") or "PriceSource")
+    out["price_status"] = status
+    out["price_time_label"] = f"價格時間：{out.get('source_time_hm')}｜來源：{src}｜狀態：{status}"
+    age_value = out.get("age_seconds")
+    if age_value is None:
+        age_value = 999999
+    out["stale"] = bool(_is_tw_intraday_now(now) and int(age_value) > 90)
+    return out
+
+
 def _pick_fast_price(symbol: str) -> Dict[str, object]:
-    # Priority: official MIS realtime, Yahoo 1m, Yahoo quote.
-    mis = fetch_twse_mis_live_price(symbol)
-    if mis.get("accepted"):
-        return mis
-    chart = _yahoo_chart_intraday(symbol)
-    if chart.get("accepted"):
-        return chart
-    quote = _yahoo_quote_fast(symbol)
-    if quote.get("accepted"):
-        return quote
-    return {"accepted": False, "reason": f"mis={mis.get('reason')} chart={chart.get('reason')} quote={quote.get('reason')}"}
+    # V8.3: fetch multiple fast sources and choose freshest timestamp.
+    # Never blindly prefer MIS if Yahoo is newer; stale price must be visible.
+    candidates = [
+        _enrich_price_freshness(fetch_twse_mis_live_price(symbol)),
+        _enrich_price_freshness(_yahoo_chart_intraday(symbol)),
+        _enrich_price_freshness(_yahoo_quote_fast(symbol)),
+    ]
+    accepted = [c for c in candidates if c.get("accepted")]
+    if not accepted:
+        return {"accepted": False, "reason": " ".join([f"{c.get('source','src')}={c.get('reason')}" for c in candidates])}
+
+    # Fresh first. If all are stale, still return the newest but mark it delayed.
+    # Prefer Yahoo on tie because Yahoo quote/page often refreshes faster than MIS in Streamlit Cloud.
+    def rank(c):
+        age = int(c.get("age_seconds") if c.get("age_seconds") is not None else 999999)
+        fresh = 0 if not c.get("stale") else 1
+        src = str(c.get("source") or "")
+        provider_priority = 0 if src.startswith("Yahoo") else 1
+        return (fresh, age, provider_priority)
+
+    accepted.sort(key=rank)
+    best = accepted[0]
+    others = ";".join([f"{c.get('source')}@{c.get('source_time_hm')}:{c.get('last')}" for c in accepted[1:]])
+    if others:
+        best["cross_source_note"] = others
+    return best
 
 
 def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
@@ -575,7 +658,12 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
                 d = parse_date_safe(str(fast.get("price_date") or today_taipei_date()))
                 close = float(fast["last"]); high = float(fast["high"]); low = float(fast["low"]); open_ = float(fast["open"]); previous_close = float(fast.get("previous_close") or close); vwap = float(fast.get("vwap") or (high + low + close) / 3.0); vol = float(fast.get("volume") or 0)
                 context = _merge_official_context(ticker, _flow_context(ticker, d, s["closes"], close, vwap, previous_close=previous_close), d, closes=s["closes"], last=close, vwap=vwap, previous_close=previous_close)
-                return PriceFrame(ticker=ticker, truth=make_truth(str(fast.get("source", "RealtimeQuote")), d, False, True, "價格快速同步｜日K待補", "intraday_fast"), open=open_, high=high, low=low, last=close, previous_close=previous_close, volume=vol, vwap=vwap, atr14=float(base.get("atr14") or max(close * 0.03, 0.01)), recent_closes=s["closes"], recent_highs=s["highs"], recent_lows=s["lows"], recent_volumes=s["volumes"], price_date=d, market_status=_tw_market_status(d), context=context)
+                context["price_meta"] = {
+                    "source": fast.get("source"), "source_time": fast.get("source_time"), "source_time_hm": fast.get("source_time_hm"),
+                    "age_seconds": fast.get("age_seconds"), "status": fast.get("price_status"),
+                    "label": fast.get("price_time_label"), "cross_source_note": fast.get("cross_source_note", ""),
+                }
+                return PriceFrame(ticker=ticker, truth=make_truth(str(fast.get("source", "RealtimeQuote")), d, False, True, str(fast.get("price_time_label") or "價格快速同步｜日K待補"), "intraday_fast" if not fast.get("stale") else "intraday_delayed"), open=open_, high=high, low=low, last=close, previous_close=previous_close, volume=vol, vwap=vwap, atr14=float(base.get("atr14") or max(close * 0.03, 0.01)), recent_closes=s["closes"], recent_highs=s["highs"], recent_lows=s["lows"], recent_volumes=s["volumes"], price_date=d, market_status=_tw_market_status(d), context=context)
             return _fallback_price(ticker, "yfinance 無資料；快速報價也未取得")
         hist = hist.dropna(subset=["Open", "High", "Low", "Close"])
         if len(hist) < 3:
@@ -600,7 +688,7 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
             price_date = parse_date_safe(str(fast.get("price_date") or hist.index[-1].date().isoformat()))
             source_name = fast.get("source", "YahooFast")
             freshness = "intraday_fast"
-            truth_reason = "價格快速同步｜官方MIS/Yahoo fast"
+            truth_reason = str(fast.get("price_time_label") or "價格快速同步｜官方MIS/Yahoo fast")
         else:
             close, high, low, open_ = daily_close, float(last_row["High"]), float(last_row["Low"]), float(last_row["Open"])
             vol = float(last_row.get("Volume", 0) or 0)
@@ -636,9 +724,17 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
             vwap=vwap,
             previous_close=previous_close,
         )
+        if fast.get("accepted"):
+            context["price_meta"] = {
+                "source": fast.get("source"), "source_time": fast.get("source_time"), "source_time_hm": fast.get("source_time_hm"),
+                "age_seconds": fast.get("age_seconds"), "status": fast.get("price_status"),
+                "label": fast.get("price_time_label"), "cross_source_note": fast.get("cross_source_note", ""),
+            }
+        else:
+            context["price_meta"] = {"source": source_name, "status": "日K參考", "label": f"價格時間：{price_date}｜來源：{source_name}｜狀態：日K參考"}
         return PriceFrame(
             ticker=ticker,
-            truth=make_truth(str(source_name), price_date, False, True, truth_reason, freshness),
+            truth=make_truth(str(source_name), price_date, False, True, truth_reason, "intraday_delayed" if fast.get("accepted") and fast.get("stale") else freshness),
             open=open_, high=high, low=low, last=close, previous_close=previous_close,
             volume=vol, vwap=vwap, atr14=atr,
             recent_closes=closes, recent_highs=highs, recent_lows=lows, recent_volumes=volumes,

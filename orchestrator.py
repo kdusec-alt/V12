@@ -269,6 +269,7 @@ def _decision_card(price: PriceFrame, raw: RawForecast, score: float, final_t1: 
         "資料標題": words["info"], "開盤": round(float(price.open), 2), "現價": round(last, 2),
         "最高": round(float(price.high), 2), "最低": round(float(price.low), 2),
         "漲跌": round(chg, 2), "漲跌幅": round(chgp, 2), "VWAP位置": "VWAP 下方" if last < vwap else "VWAP 上方",
+        "價格時間": ((price.context or {}).get("price_meta") or {}).get("label", ""),
     }
 def _deep_report(price: PriceFrame, raw: RawForecast, final: Dict[str, float], decision: Dict[str, object], radar: Dict[str, str], signals: List[SignalPacket], confidence: float, news_items: List[NewsItem]) -> str:
     inst, margin, bsi = price.context.get("inst", {}), price.context.get("margin", {}), price.context.get("bsi", {})

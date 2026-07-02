@@ -43,7 +43,7 @@ def render_battle_panel(st, forecast):
     .fvnote{{display:block;color:#93c5fd;font-size:9px;margin-top:1px}}
     .persona{{display:inline-block;margin-top:5px;border:1px solid rgba(255,215,82,.55);border-radius:13px;color:#fff6c8;background:rgba(18,49,37,.55);padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap}}
     @media(max-width:1100px){{.head{{grid-template-columns:1fr}}}}
-    .info{{margin-top:6px;border:1px solid rgba(85,200,255,.22);border-radius:11px;background:#071727;padding:6px 9px;font-weight:650;line-height:1.16;font-size:11.8px}}.label{{color:#9bdcff;font-weight:800}}
+    .info{{margin-top:6px;border:1px solid rgba(85,200,255,.22);border-radius:11px;background:#071727;padding:6px 9px;font-weight:650;line-height:1.16;font-size:11.8px}}.ptime{{display:block;margin-top:2px;color:#a7f3d0;font-size:9.6px;font-weight:750}}.label{{color:#9bdcff;font-weight:800}}
     .decision{{margin-top:6px;border:1px solid rgba(255,211,78,.48);border-radius:13px;background:linear-gradient(180deg,rgba(28,26,34,.96),rgba(13,13,20,.96));padding:6px 8px}}
     .dt{{font-size:11.4px;font-weight:850;color:#fff;margin-bottom:5px}}.blue{{color:#8fd7ff}}.main{{background:rgba(0,0,0,.26);border-radius:9px;color:#fff9c9;font-size:12.4px;line-height:1.12;font-weight:850;padding:6px 9px;margin-bottom:6px}}
     .risk{{border-left:3px solid #ff6f8e;padding-left:8px;color:#dff2ff;font-size:10.4px;font-weight:650;line-height:1.12;margin-bottom:5px;max-height:54px;overflow:hidden}}
@@ -53,7 +53,7 @@ def render_battle_panel(st, forecast):
     .t1{{margin-top:7px;border-top:1px solid rgba(55,230,255,.18);padding-top:5px}}.tl{{font-size:11.8px;color:#9bdcff;font-weight:800}}.tm{{font-size:16.6px;line-height:1.0;color:#5ff4ff;font-weight:900}}.ts{{color:#d8f2ff;font-weight:650;font-size:11px}}
     </style></head><body><div class='panel'>
       <div class='head'><div><h1>{safe(t.resolved_symbol)}｜{safe(t.name)}</h1><div class='streak'>{safe(p.tags[0] if p.tags else '')}</div>{persona_html}</div><div class='fvleft'><b>模型合理價值區間 / FAIR VALUE</b>{fair}<span class='fvnote'>技術錨 + V8.4校準 / 樣本少｜研究參考</span></div></div>
-      <div class='info'><span class='label'>{safe(d.get('資料標題','資料狀態'))}</span><br>開盤：{fmt(d.get('開盤'))}｜現價：{fmt(d.get('現價'))}｜漲跌：{fmt(d.get('漲跌'))} / {fmt(d.get('漲跌幅'))}%<br>今日高：{fmt(d.get('最高'))}｜今日低：{fmt(d.get('最低'))}｜{safe(d.get('VWAP位置', p.tags[1] if len(p.tags)>1 else ''))}{t0_line}{compare_line}</div>
+      <div class='info'><span class='label'>{safe(d.get('資料標題','資料狀態'))}</span><br>開盤：{fmt(d.get('開盤'))}｜現價：{fmt(d.get('現價'))}｜漲跌：{fmt(d.get('漲跌'))} / {fmt(d.get('漲跌幅'))}%<br>今日高：{fmt(d.get('最高'))}｜今日低：{fmt(d.get('最低'))}｜{safe(d.get('VWAP位置', p.tags[1] if len(p.tags)>1 else ''))}<span class='ptime'>{safe(d.get('價格時間',''))}</span>{t0_line}{compare_line}</div>
       <div class='decision'>
         <div class='dt'>{safe(d.get('標題'))}</div>
         <div class='main'>{safe(d.get('主訊息'))}</div>
