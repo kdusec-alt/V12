@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from models import NewsItem, PriceFrame, TickerInfo
 from truth_guard import make_truth, parse_date_safe, today_taipei_date, validate_official_block
+from data_sources_tw_live_price import fetch_twse_mis_live_price
 TW_SAMPLE = {"6770.TW": dict(open=83.20, high=85.20, low=78.10, last=78.30, previous_close=83.20, volume=86000, vwap=80.53, atr14=5.99), "6586.TWO": dict(open=123.50, high=130.50, low=114.00, last=126.00, previous_close=120.50, volume=4200, vwap=123.50, atr14=9.50), "2454.TW": dict(open=4055.0, high=4145.0, low=4025.0, last=4055.0, previous_close=4100.0, volume=6800, vwap=4075.0, atr14=145.0), "2337.TW": dict(open=158.0, high=161.5, low=154.5, last=156.0, previous_close=159.0, volume=15000, vwap=157.8, atr14=7.3), "2308.TW": dict(open=1815.0, high=1855.0, low=1785.0, last=1810.0, previous_close=1835.0, volume=12200, vwap=1816.7, atr14=65.0), "00919.TW": dict(open=23.25, high=23.35, low=23.10, last=23.18, previous_close=23.22, volume=50000, vwap=23.21, atr14=0.24), "5469.TW": dict(open=90.8, high=94.0, low=90.0, last=91.8, previous_close=87.4, volume=19000, vwap=91.93, atr14=4.2)}
 BULL = ["獲利", "成長", "EPS", "營收", "買超", "創高", "法說", "AI", "訂單", "擴產", "回補", "強勢", "漲"]
 BEAR = ["虧損", "減損", "賣超", "下修", "衰退", "跌", "處置", "警示", "庫存", "法說虧損", "利空"]
@@ -444,6 +445,9 @@ def _fallback_price(ticker: TickerInfo, reason: str) -> PriceFrame:
     context = _flow_context(ticker, d, s["closes"], float(base["last"]), float(base["vwap"]), previous_close=float(base["previous_close"]))
     context = _apply_v9_verified_contract(ticker, context, d)
     return PriceFrame(ticker=ticker, truth=make_truth("V12_PRICE_SAMPLE_FALLBACK", d, True, True, reason, "fallback_reference"), open=float(base["open"]), high=float(base["high"]), low=float(base["low"]), last=float(base["last"]), previous_close=float(base["previous_close"]), volume=float(base["volume"]), vwap=float(base["vwap"]), atr14=float(base["atr14"]), recent_closes=s["closes"], recent_highs=s["highs"], recent_lows=s["lows"], recent_volumes=s["volumes"], price_date=d, market_status=_tw_market_status(d), context=context)
+
+
+
 def _yahoo_chart_intraday(symbol: str) -> Dict[str, object]:
     """Fetch faster TW intraday quote from Yahoo chart API.
 
@@ -541,13 +545,17 @@ def _yahoo_quote_fast(symbol: str) -> Dict[str, object]:
 
 
 def _pick_fast_price(symbol: str) -> Dict[str, object]:
+    # Priority: official MIS realtime, Yahoo 1m, Yahoo quote.
+    mis = fetch_twse_mis_live_price(symbol)
+    if mis.get("accepted"):
+        return mis
     chart = _yahoo_chart_intraday(symbol)
     if chart.get("accepted"):
         return chart
     quote = _yahoo_quote_fast(symbol)
     if quote.get("accepted"):
         return quote
-    return {"accepted": False, "reason": f"chart={chart.get('reason')} quote={quote.get('reason')}"}
+    return {"accepted": False, "reason": f"mis={mis.get('reason')} chart={chart.get('reason')} quote={quote.get('reason')}"}
 
 
 def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
@@ -555,21 +563,32 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
         return _fallback_price(ticker, "offline smoke test fallback")
     try:
         import yfinance as yf
-        hist = yf.Ticker(ticker.resolved_symbol).history(period="6mo", interval="1d", auto_adjust=False, timeout=8)
+
+        # Fetch realtime first; fast quote is source of truth when available.
+        fast = _pick_fast_price(ticker.resolved_symbol)
+
+        hist = yf.Ticker(ticker.resolved_symbol).history(period="6mo", interval="1d", auto_adjust=False, timeout=6)
         if hist is None or hist.empty:
-            return _fallback_price(ticker, "yfinance 無資料；只使用樣本價格")
+            if fast.get("accepted"):
+                base = TW_SAMPLE.get(ticker.resolved_symbol, dict(open=fast["open"], high=fast["high"], low=fast["low"], last=fast["last"], previous_close=fast.get("previous_close") or fast["last"], volume=fast.get("volume") or 1000, vwap=fast.get("vwap") or fast["last"], atr14=max(float(fast["last"]) * 0.03, 0.01)))
+                s = _series_from_sample({**base, "last": float(fast["last"]), "high": float(fast["high"]), "low": float(fast["low"]), "open": float(fast["open"]), "previous_close": float(fast.get("previous_close") or base.get("previous_close") or fast["last"]), "volume": float(fast.get("volume") or base.get("volume") or 1000), "vwap": float(fast.get("vwap") or fast["last"]), "atr14": float(base.get("atr14") or max(float(fast["last"]) * 0.03, 0.01))}, ticker.resolved_symbol)
+                d = parse_date_safe(str(fast.get("price_date") or today_taipei_date()))
+                close = float(fast["last"]); high = float(fast["high"]); low = float(fast["low"]); open_ = float(fast["open"]); previous_close = float(fast.get("previous_close") or close); vwap = float(fast.get("vwap") or (high + low + close) / 3.0); vol = float(fast.get("volume") or 0)
+                context = _merge_official_context(ticker, _flow_context(ticker, d, s["closes"], close, vwap, previous_close=previous_close), d, closes=s["closes"], last=close, vwap=vwap, previous_close=previous_close)
+                return PriceFrame(ticker=ticker, truth=make_truth(str(fast.get("source", "RealtimeQuote")), d, False, True, "價格快速同步｜日K待補", "intraday_fast"), open=open_, high=high, low=low, last=close, previous_close=previous_close, volume=vol, vwap=vwap, atr14=float(base.get("atr14") or max(close * 0.03, 0.01)), recent_closes=s["closes"], recent_highs=s["highs"], recent_lows=s["lows"], recent_volumes=s["volumes"], price_date=d, market_status=_tw_market_status(d), context=context)
+            return _fallback_price(ticker, "yfinance 無資料；快速報價也未取得")
         hist = hist.dropna(subset=["Open", "High", "Low", "Close"])
         if len(hist) < 3:
-            return _fallback_price(ticker, "日 K 不足；只使用樣本價格")
+            if fast.get("accepted"):
+                hist = pd.DataFrame()
+            else:
+                return _fallback_price(ticker, "日 K 不足；快速報價也未取得")
 
         last_row, prev_row = hist.iloc[-1], hist.iloc[-2]
         daily_close = float(last_row["Close"])
         daily_prev_close = float(prev_row["Close"])
 
-        # Fast intraday quote overrides daily OHLC when available. This fixes the
-        # stale-price problem during Taiwan trading hours while keeping 6-month
-        # history for ATR / model context.
-        fast = _pick_fast_price(ticker.resolved_symbol)
+        # Fast intraday quote overrides daily OHLC when available.
         if fast.get("accepted"):
             close = float(fast["last"])
             high = float(fast["high"])
@@ -581,7 +600,7 @@ def fetch_tw_price(ticker: TickerInfo) -> PriceFrame:
             price_date = parse_date_safe(str(fast.get("price_date") or hist.index[-1].date().isoformat()))
             source_name = fast.get("source", "YahooFast")
             freshness = "intraday_fast"
-            truth_reason = "價格快速同步｜1m/quote"
+            truth_reason = "價格快速同步｜官方MIS/Yahoo fast"
         else:
             close, high, low, open_ = daily_close, float(last_row["High"]), float(last_row["Low"]), float(last_row["Open"])
             vol = float(last_row.get("Volume", 0) or 0)
