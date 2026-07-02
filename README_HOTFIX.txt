@@ -1,26 +1,16 @@
-TINO V12 v8.6｜TWSE/TPEX MIS Debug Breadcrumb Hotfix Only
+TINO V12 v8.6.1｜MIS Debug Panel Renderer Hotfix Only
 
-Replace only these 2 files:
-- data_sources_tw_live_price.py
-- data_sources_tw.py
+替換檔案：
+- orchestrator.py
+- ui_admin.py
 
-Purpose:
-- Do not change V9 UI, strategy, fundamentals, institutions, margin, Google Sheet, or Auto Learning.
-- Add MIS diagnostic breadcrumbs into context['price_meta']['mis_debug'].
-- Preserve frontend clean display; this is for Admin/Debug only.
+目的：
+- 將 v8.6 寫入 context['price_meta']['mis_debug'] 的 MIS 診斷資料帶到 Admin Console。
+- Debug Mode 開啟後，在左側 Admin 顯示 MIS Price Debug。
+- 不改價格採用邏輯，不改 V9 前台，不改法人/資券/基本面/Auto Learning/Google Sheet。
 
-What it records:
-- mis_tried
-- mis_market
-- mis_symbol
-- mis_http_status
-- mis_raw_ok
-- mis_raw_rows
-- mis_row_keys
-- mis_parsed_last/high/low/time
-- mis_last_source
-- mis_reject_reason
-
-How to use:
-Run a ticker such as 5469, 6770, 2308, 2317 with Debug Mode enabled.
-If the selected source is still YahooChart_1m, inspect context['price_meta']['mis_debug'] to see why MIS was rejected.
+操作：
+1. 先保留 v8.6 的 data_sources_tw.py / data_sources_tw_live_price.py。
+2. 再替換本包的 orchestrator.py 與 ui_admin.py。
+3. Deploy / Rerun。
+4. 勾選 Debug Mode，重新分析 6770/5469，即可看到 MIS trace。

@@ -152,6 +152,43 @@ def _learning_panel(st, forecast):
         st.caption(f"Memory path：{MEMORY_DIR}")
         st.caption(f"Predictions：{len(tables.get('predictions', []))}｜Audits：{len(tables.get('audits', []))}｜Profiles：{len(tables.get('profiles', []))}")
 
+
+def _mis_debug_panel(st, forecast):
+    """Admin-only MIS diagnostics. Never render engineering strings on V9 front stage."""
+    if not forecast or not getattr(forecast, "decision_card", None):
+        st.sidebar.caption("MIS Debug：尚無 forecast。")
+        return
+    price_meta = (forecast.decision_card or {}).get("_price_meta") or {}
+    mis_debug = price_meta.get("mis_debug") or {}
+    with st.sidebar.expander("MIS Price Debug", expanded=True):
+        st.caption("只顯示在 Admin Debug；前台不顯示工程字串。")
+        st.markdown("**Selected price source**")
+        st.json({
+            "price_source": price_meta.get("source", ""),
+            "price_status": price_meta.get("status", ""),
+            "price_label": price_meta.get("label", ""),
+            "decision_blocked": bool(price_meta.get("decision_blocked", False)),
+        })
+        st.markdown("**TWSE/TPEX MIS trace**")
+        if mis_debug:
+            ordered = {
+                "mis_tried": mis_debug.get("mis_tried"),
+                "mis_market": mis_debug.get("mis_market"),
+                "mis_symbol": mis_debug.get("mis_symbol"),
+                "mis_http_status": mis_debug.get("mis_http_status"),
+                "mis_raw_ok": mis_debug.get("mis_raw_ok"),
+                "mis_raw_rows": mis_debug.get("mis_raw_rows"),
+                "mis_parsed_last": mis_debug.get("mis_parsed_last"),
+                "mis_parsed_high": mis_debug.get("mis_parsed_high"),
+                "mis_parsed_low": mis_debug.get("mis_parsed_low"),
+                "mis_parsed_time": mis_debug.get("mis_parsed_time"),
+                "mis_reject_reason": mis_debug.get("mis_reject_reason"),
+                "fallback_used": price_meta.get("source", ""),
+            }
+            st.json(ordered)
+        else:
+            st.warning("尚未收到 mis_debug。請重新按一次『開始分析』，或確認已替換 v8.6 價格資料檔。")
+
 def render_admin(st, forecast):
     authed = _admin_gate(st)
     if not authed:
@@ -169,4 +206,6 @@ def render_admin(st, forecast):
             _df(st, [x.__dict__ for x in forecast.data_truths], "尚無資料真實性紀錄。")
     _learning_panel(st, forecast)
     debug = st.sidebar.checkbox("Debug Mode", value=False)
+    if debug:
+        _mis_debug_panel(st, forecast)
     return macro, auto, live, debug

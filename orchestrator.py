@@ -271,6 +271,8 @@ def _decision_card(price: PriceFrame, raw: RawForecast, score: float, final_t1: 
         "最高": round(float(price.high), 2), "最低": round(float(price.low), 2),
         "漲跌": round(chg, 2), "漲跌幅": round(chgp, 2), "VWAP位置": "VWAP 下方" if last < vwap else "VWAP 上方",
         "價格時間": price_meta.get("label", ""),
+        # Admin-only payload. UI panels ignore underscore keys; do not render this in V9 front stage.
+        "_price_meta": price_meta,
     }
     if bool(price_meta.get("decision_blocked")):
         card["標題"] = "AI進場決策卡｜價格待確認｜不採用延遲價"
