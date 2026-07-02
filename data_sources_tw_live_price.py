@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import os
-from typing import Dict
+from typing import Dict, Any
 from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from truth_guard import parse_date_safe, today_taipei_date
 
@@ -24,74 +25,171 @@ def _num(value) -> float | None:
         return None
 
 
+def _first_num_from_level_text(value) -> float | None:
+    """Parse TWSE MIS bid/ask fields like '89.50_89.60_...' safely."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text in {"-", "--"}:
+        return None
+    for part in text.replace("|", "_").split("_"):
+        n = _num(part)
+        if n is not None and n > 0:
+            return n
+    return None
+
+
+def _market_prefix(symbol: str) -> str:
+    # TPEX/OTC quote uses otc_XXXX.tw; TWSE listed uses tse_XXXX.tw.
+    return "otc" if str(symbol).upper().endswith(".TWO") else "tse"
+
+
+def _mis_source_name(prefix: str) -> str:
+    return "TPEX_MIS_Realtime" if prefix == "otc" else "TWSE_MIS_Realtime"
+
+
+def _build_raw_time(row: Dict[str, Any], fetched_at: datetime) -> tuple[str, str]:
+    """Return (price_date, raw_time) for V12 freshness guard.
+
+    TWSE MIS may provide either:
+    - d + t fields, for example d=20260702, t=11:13:12
+    - tlong in milliseconds
+    Some response variants omit t/d even when quote fields are valid.  In that
+    case we use the HTTP fetch time as quote-received time so a live official
+    MIS snapshot is not incorrectly marked as stale and replaced by Yahoo's
+    delayed chart data.
+    """
+    d_raw = str(row.get("d") or "").strip()
+    t_raw = str(row.get("t") or "").strip()
+    tlong = str(row.get("tlong") or "").strip()
+
+    if tlong and tlong.isdigit():
+        try:
+            ts = int(tlong)
+            # MIS tlong is normally milliseconds.
+            if ts > 10_000_000_000:
+                ts = ts // 1000
+            dt = datetime.fromtimestamp(ts, tz=ZoneInfo("Asia/Taipei"))
+            return dt.date().isoformat(), dt.isoformat()
+        except Exception:
+            pass
+
+    if len(d_raw) == 8 and t_raw and ":" in t_raw:
+        price_date = parse_date_safe(f"{d_raw[:4]}-{d_raw[4:6]}-{d_raw[6:8]}")
+        return price_date, f"{price_date} {t_raw}"
+
+    # Last resort: valid MIS quote row but no quote-time fields.
+    return fetched_at.date().isoformat(), fetched_at.isoformat()
+
+
+def _parse_mis_row(symbol: str, row: Dict[str, Any], prefix: str, fetched_at: datetime) -> Dict[str, object]:
+    last = _num(row.get("z"))
+    bid = _first_num_from_level_text(row.get("b"))
+    ask = _first_num_from_level_text(row.get("a"))
+
+    # If z is '-' but bid/ask are live, keep the official snapshot usable.
+    # Prefer mid for reference; if only one side exists, use that side.
+    last_source = "last"
+    if last is None or last <= 0:
+        if bid and ask:
+            last = round((bid + ask) / 2.0, 2)
+            last_source = "bid_ask_mid"
+        elif ask:
+            last = ask
+            last_source = "ask_proxy"
+        elif bid:
+            last = bid
+            last_source = "bid_proxy"
+    if last is None or last <= 0:
+        return {"accepted": False, "source": _mis_source_name(prefix), "reason": "twse_mis_no_valid_last_bid_ask"}
+
+    open_ = _num(row.get("o")) or last
+    high = _num(row.get("h")) or max(open_, last)
+    low = _num(row.get("l")) or min(open_, last)
+    prev = _num(row.get("y")) or 0.0
+    # TWSE MIS volume fields differ by endpoint.  v is usually total volume in board lots.
+    lots = _num(row.get("v")) or _num(row.get("tv")) or 0.0
+    volume = lots * 1000.0 if lots and lots < 10_000_000 else lots
+    price_date, raw_time = _build_raw_time(row, fetched_at)
+
+    return {
+        "accepted": True,
+        "source": _mis_source_name(prefix),
+        "open": float(open_),
+        "high": float(max(high, last)),
+        "low": float(min(low, last)),
+        "last": float(last),
+        "previous_close": float(prev),
+        "volume": float(volume or 0),
+        "vwap": float((max(high, last) + min(low, last) + last) / 3.0),
+        "price_date": price_date,
+        "raw_time": raw_time,
+        "mis_symbol": f"{prefix}_{_code(symbol)}.tw",
+        "mis_last_source": last_source,
+    }
+
+
 def fetch_twse_mis_live_price(symbol: str) -> Dict[str, object]:
     """Official TWSE/TPEX MIS realtime quote for Taiwan intraday price.
 
-    Returns the same lightweight dict contract as data_sources_tw Yahoo fast
-    quote helpers.  It is intentionally isolated so V12 can hotfix live price
-    without touching UI, institutional, margin, fundamental, or learning flows.
+    V8.5 fix:
+    - Do not lose official MIS quotes just because the response omits d/t.
+    - Parse tlong milliseconds when present.
+    - Accept bid/ask snapshot if z is '-' but live levels exist.
+    - Return explicit reject reason for Admin/debug, while keeping frontend clean.
     """
     if os.environ.get("TINO_OFFLINE_TEST") == "1":
-        return {"accepted": False, "reason": "offline"}
+        return {"accepted": False, "source": "TWSE_MIS_Realtime", "reason": "offline"}
     try:
         import requests
         import time as _time
 
         code = _code(symbol)
-        prefix = "otc" if str(symbol).upper().endswith(".TWO") else "tse"
+        prefix = _market_prefix(symbol)
+        ex_ch = f"{prefix}_{code}.tw"
+        fetched_at = datetime.now(ZoneInfo("Asia/Taipei"))
         headers = {
-            "User-Agent": "Mozilla/5.0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
             "Referer": "https://mis.twse.com.tw/stock/index.jsp",
+            "Connection": "keep-alive",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
         }
         sess = requests.Session()
+        sess.headers.update(headers)
+        # Warm up cookies; fibest page helps some TWSE/TPEX MIS deployments.
+        for warm_url in (
+            "https://mis.twse.com.tw/stock/index.jsp",
+            f"https://mis.twse.com.tw/stock/fibest.jsp?stock={code}",
+        ):
+            try:
+                sess.get(warm_url, timeout=2)
+            except Exception:
+                pass
+
+        params = {"ex_ch": ex_ch, "json": "1", "delay": "0", "_": int(_time.time() * 1000)}
+        resp = sess.get("https://mis.twse.com.tw/stock/api/getStockInfo.jsp", params=params, timeout=5)
+        raw_text = resp.text or ""
         try:
-            sess.get("https://mis.twse.com.tw/stock/index.jsp", headers=headers, timeout=2)
+            data = resp.json()
         except Exception:
-            pass
-        data = sess.get(
-            "https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
-            params={"ex_ch": f"{prefix}_{code}.tw", "json": "1", "delay": "0", "_": int(_time.time() * 1000)},
-            headers=headers,
-            timeout=4,
-        ).json()
-        row = (((data or {}).get("msgArray") or [None])[0])
+            return {"accepted": False, "source": _mis_source_name(prefix), "reason": f"twse_mis_non_json:{resp.status_code}:{raw_text[:80]}"}
+
+        arr = (data or {}).get("msgArray") or []
+        row = arr[0] if arr else None
         if not row:
-            return {"accepted": False, "reason": "twse_mis_empty"}
+            # Keep the exact symbol visible in Admin Debug if needed.
+            return {"accepted": False, "source": _mis_source_name(prefix), "reason": f"twse_mis_empty:{ex_ch}"}
 
-        last = _num(row.get("z"))
-        if last is None or last <= 0:
-            return {"accepted": False, "reason": "twse_mis_no_last"}
-        open_ = _num(row.get("o")) or last
-        high = _num(row.get("h")) or max(open_, last)
-        low = _num(row.get("l")) or min(open_, last)
-        prev = _num(row.get("y")) or 0.0
-        lots = _num(row.get("v")) or 0.0
-        volume = lots * 1000.0 if lots < 10_000_000 else lots
-
-        d_raw = str(row.get("d") or "").strip()
-        t_raw = str(row.get("t") or "").strip()
-        price_date = today_taipei_date()
-        raw_time = None
-        if len(d_raw) == 8:
-            price_date = parse_date_safe(f"{d_raw[:4]}-{d_raw[4:6]}-{d_raw[6:8]}")
-            if t_raw and ":" in t_raw:
-                raw_time = f"{price_date} {t_raw}"
-
-        return {
-            "accepted": True,
-            "source": "TWSE_MIS_Realtime" if prefix == "tse" else "TPEX_MIS_Realtime",
-            "open": float(open_),
-            "high": float(high),
-            "low": float(low),
-            "last": float(last),
-            "previous_close": float(prev),
-            "volume": float(volume),
-            "vwap": float((high + low + last) / 3.0),
-            "price_date": price_date,
-            "raw_time": raw_time,
-        }
+        parsed = _parse_mis_row(symbol, row, prefix, fetched_at)
+        if not parsed.get("accepted"):
+            parsed["reason"] = f"{parsed.get('reason')}:{ex_ch}"
+        return parsed
     except Exception as exc:
-        return {"accepted": False, "reason": f"twse_mis_error:{type(exc).__name__}"}
+        prefix = _market_prefix(symbol)
+        return {"accepted": False, "source": _mis_source_name(prefix), "reason": f"twse_mis_error:{type(exc).__name__}"}
 
 
 

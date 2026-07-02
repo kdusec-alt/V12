@@ -565,7 +565,10 @@ def _parse_price_time(raw_time, price_date: str | None = None):
         return None
     try:
         if isinstance(raw_time, (int, float)) or str(raw_time).strip().isdigit():
-            return datetime.fromtimestamp(int(float(raw_time)), tz=ZoneInfo("Asia/Taipei"))
+            ts = int(float(raw_time))
+            if ts > 10_000_000_000:  # TWSE MIS tlong is milliseconds
+                ts = ts // 1000
+            return datetime.fromtimestamp(ts, tz=ZoneInfo("Asia/Taipei"))
         txt = str(raw_time).strip()
         if re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}:\d{2}$", txt):
             return datetime.fromisoformat(txt).replace(tzinfo=ZoneInfo("Asia/Taipei"))
@@ -655,6 +658,9 @@ def _pick_fast_price(symbol: str) -> Dict[str, object]:
         best["price_time_label"] = f"{best.get('price_time_label','價格時間：--｜來源：延遲資料｜狀態：延遲資料')}｜盤中決策：價格待確認"
 
     notes = [f"{c.get('source')}@{c.get('source_time_hm')}:{c.get('last')}:{c.get('price_status')}" for c in accepted if c is not best]
+    # Admin/debug breadcrumb: why MIS or other sources were not used. Kept out of front decision text.
+    reject_notes = [f"{c.get('source','src')}拒絕:{c.get('reason')}" for c in candidates if not c.get('accepted') and c.get('reason')]
+    notes.extend(reject_notes[:3])
     if google_ref.get("accepted"):
         notes.append(f"GoogleFinance_Reference:{google_ref.get('last')}:僅交叉參考")
     if notes:
