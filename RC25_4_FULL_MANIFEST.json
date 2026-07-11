@@ -1,0 +1,290 @@
+{
+  "version": "RC25.4",
+  "files": [
+    {
+      "path": ".github/workflows/update_market_heat.yml",
+      "sha256": "59181216bcdbb36526f0c18a6062e53a5d50a232c82822734c2e26ebf9cd4446",
+      "bytes": 243
+    },
+    {
+      "path": "RC24_1_STABILITY_AUDIT.md",
+      "sha256": "ae2959e717d28583728d70c800f66a78e8aee0b00fa330838a6146116574215e",
+      "bytes": 4237
+    },
+    {
+      "path": "RC24_2_POST_RENDER_CRASH_GUARD.md",
+      "sha256": "f8f8a8e9762872fdd3d0cc53e9d92d9c1e3dc28414abc4129ed5cdb19735946f",
+      "bytes": 1259
+    },
+    {
+      "path": "RC25_4_FULL_DEPLOY_NOTE.md",
+      "sha256": "1747d14d0d362183f77224348df581433422bb8bbd595c82fdfe0a14030d364b",
+      "bytes": 675
+    },
+    {
+      "path": "README.md",
+      "sha256": "b5e01ed1cff6a0b43be14981dbfc5b15cdc22ae18b38480883a5ace9811366ba",
+      "bytes": 947
+    },
+    {
+      "path": "README_HOTFIX.txt",
+      "sha256": "e5d82924959332ea190190272f8969d4b1f0ee01c0ed811e85c2c88d970cb729",
+      "bytes": 995
+    },
+    {
+      "path": "README_RC23_FINAL_OPTIMIZATION.md",
+      "sha256": "6345aeeff3d1cc6f889f5bba3b30ce69ddaf49e604103d99336ca32097badc30",
+      "bytes": 1769
+    },
+    {
+      "path": "README_RC23_NOLOCK_HOTFIX.txt",
+      "sha256": "b4e6823f013aa09d70a26b2474ab2c4948c39253c04cf056ee8e1051e4659cd4",
+      "bytes": 1222
+    },
+    {
+      "path": "README_RC25_1_RENDER_CRASH_GUARD.md",
+      "sha256": "68e42bd440a173d90c395df3ebadd7cf25eab79dd479c39d13ac82a6ec22b569",
+      "bytes": 987
+    },
+    {
+      "path": "V12_CORE_CONSTITUTION.md",
+      "sha256": "be0fc16c95e4d72e142b5f64ddec3bb363bb58d030323663f76edbb08d5f30f5",
+      "bytes": 1055
+    },
+    {
+      "path": "app.py",
+      "sha256": "608a031101c17c456b7d2d4b5762662b7361f308318c6539d04e70047df6dd99",
+      "bytes": 15109
+    },
+    {
+      "path": "arbitration.py",
+      "sha256": "439c849c899afda8f9e5c61d361b288cf0e3af31191ded3f04d1e1de266707d3",
+      "bytes": 1094
+    },
+    {
+      "path": "auto_audit_scheduler.py",
+      "sha256": "2b5f816f34023287a9dcf1a6c072181a8af65b100e02814a2e1d0aa7b2eccdc7",
+      "bytes": 1617
+    },
+    {
+      "path": "config.py",
+      "sha256": "23673a25818b0db56259f817923479bf03892083b661a8811a78cacdb0ffe049",
+      "bytes": 1459
+    },
+    {
+      "path": "data_sources.py",
+      "sha256": "179f1be180d7dcd596cfbca87c402cf6cbd102988b0acb03fdfa5ecab80e7b28",
+      "bytes": 876
+    },
+    {
+      "path": "data_sources_etf.py",
+      "sha256": "46a7e0c3d879b47425613a4ed4614cfbd14a4799cb92129f79b4a488e9b649e7",
+      "bytes": 545
+    },
+    {
+      "path": "data_sources_market_heat.py",
+      "sha256": "f6d63cd3089f3d2350a8d29a79f2f3bb82045d94ce7aa292091493ee7250536f",
+      "bytes": 5215
+    },
+    {
+      "path": "data_sources_tw.py",
+      "sha256": "ee7240a9293c053555744c56d960e018d1b9bfaa91ed9f1ab8db50f364709aed",
+      "bytes": 86612
+    },
+    {
+      "path": "data_sources_tw_fundamental.py",
+      "sha256": "e4d57cc60e1bf1d1214d806809737712dafbe7b70d9be3e8076b50e1ffacfe6c",
+      "bytes": 29668
+    },
+    {
+      "path": "data_sources_tw_live_price.py",
+      "sha256": "d825ece5526033fc35188bcab790bc685427e0df3d3a06684a218e90bc1b0365",
+      "bytes": 11410
+    },
+    {
+      "path": "data_sources_tw_moneydj.py",
+      "sha256": "21b319a82b43f9ee8a6ec8b696bbf9c8b6224ccde69123e3e0dce17be3c96f98",
+      "bytes": 7052
+    },
+    {
+      "path": "data_sources_tw_yahoo_chip.py",
+      "sha256": "3c04d4fe5d397d8123afd5f81b870cb770ed2c2eb313ef288600e515a52a0826",
+      "bytes": 6232
+    },
+    {
+      "path": "data_sources_us.py",
+      "sha256": "37985d275cacac2d74798e6551e26393c3fa29cf6c5646eea0ce013e6eb652cf",
+      "bytes": 33957
+    },
+    {
+      "path": "debug_trace.py",
+      "sha256": "c1735f3e4b0b473d368219fde770af9ae4f26d15bdce3bfb810153687e669e2d",
+      "bytes": 1335
+    },
+    {
+      "path": "features_common.py",
+      "sha256": "362dc0539af7cd1efe49deca448e0b5e428eeb3266f42658a53f88f504234fe2",
+      "bytes": 2574
+    },
+    {
+      "path": "features_etf.py",
+      "sha256": "bd677844629263962b8d54626cc9efcf79f292732905fc8e1a5d5631c3c9a155",
+      "bytes": 821
+    },
+    {
+      "path": "features_tw.py",
+      "sha256": "93479c2ff032bc5f6ee9e9a19c255b0b4398c11e8dd6593b43929ff967427740",
+      "bytes": 5195
+    },
+    {
+      "path": "features_us.py",
+      "sha256": "128f873dafca7491e9b36de4d26057cac8a18b42104165a7c7b50385be5cc55b",
+      "bytes": 1513
+    },
+    {
+      "path": "forecast_engine.py",
+      "sha256": "8e5a31029e8fc2b8d5d90fd210c7fb68384bcbee44d60242ca671023bf904b7a",
+      "bytes": 2387
+    },
+    {
+      "path": "foreign_flow_predicto.py",
+      "sha256": "61474cd23e2b5154eb2d485959a245374a97c6c006a1ba603ade9da0114551e0",
+      "bytes": 13348
+    },
+    {
+      "path": "learning.py",
+      "sha256": "e2ffc3b9a45efbaecc9dd0e0a5a0a4a7d53218a046b86d02b80f8cfcfe059107",
+      "bytes": 39972
+    },
+    {
+      "path": "memory_store.py",
+      "sha256": "98ce5b77e58b6115dedb9ff78f6f0a20ec021ee59194b49f51bc4298d0e52917",
+      "bytes": 4793
+    },
+    {
+      "path": "models.py",
+      "sha256": "ac54ff004ef76b14579538440d08f643cac5b8266d71996e864887bfc3b13126",
+      "bytes": 3875
+    },
+    {
+      "path": "orchestrator.py",
+      "sha256": "b3cd69015525368144a42456b4123043c51f5ea3afdb5a21810139cd4941b325",
+      "bytes": 63300
+    },
+    {
+      "path": "price_guard.py",
+      "sha256": "8ae61cf0caafcc6909659341eaa241c45219fe261a2e32ef75ff6abc11046fa2",
+      "bytes": 2313
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "ee93ac2ecc01ab6062ebca0686a6ba7386b78ddb318cc4845ed63f037ac8efb0",
+      "bytes": 121
+    },
+    {
+      "path": "runtime.txt",
+      "sha256": "4cb403e5b3e213ec0f3565abdb2f27256eb0b62b54f43d5f427e5a7845575544",
+      "bytes": 14
+    },
+    {
+      "path": "runtime_guard.py",
+      "sha256": "741f65d960d20eca72e7e35eb91b0386c8275473d8d089d176eabfcec8181939",
+      "bytes": 1562
+    },
+    {
+      "path": "smoke_rc23_final.py",
+      "sha256": "f5e2b04d9d1c62ac2e0b4a381a24d6264e923b699cd1aeb69492aca8c942ec10",
+      "bytes": 2458
+    },
+    {
+      "path": "smoke_tests.py",
+      "sha256": "f9a9736a72d09dbe0ea9d5622f8bca484f3982c9c937ed6828c4a90cd6c5775d",
+      "bytes": 9495
+    },
+    {
+      "path": "sync_memory_remote.py",
+      "sha256": "503d3150351e4261fdf6145f6cc287172a01d21813f16cbbbc3b625a3a3ceafe",
+      "bytes": 2468
+    },
+    {
+      "path": "ticker_resolver.py",
+      "sha256": "3e506586f4cbd06b25d88b2005278d00b8db74380ed33784835035ac81a0dd24",
+      "bytes": 5118
+    },
+    {
+      "path": "tino_persistent_store.py",
+      "sha256": "3f8782e41d6eb2c91daa8e1c75dae308255545fc91a371c367b364b22aca3d26",
+      "bytes": 48715
+    },
+    {
+      "path": "tools_json_to_b64.py",
+      "sha256": "a41b76e3a252323099f3b96d60c2791174e1c0a127eee4f67220f57e1ff1aeb1",
+      "bytes": 464
+    },
+    {
+      "path": "trend_engine.py",
+      "sha256": "7dc977f06897d91741ee559444862bf90ad2ea06ad46440abc52606e51f9410b",
+      "bytes": 6379
+    },
+    {
+      "path": "truth_guard.py",
+      "sha256": "431e7c0c260a8467039959b429ce50dad456939462714c31e9aa9a1dce3b3bb1",
+      "bytes": 3563
+    },
+    {
+      "path": "ui_admin.py",
+      "sha256": "bce62f796eae8948fdf21c61938a3e22298540bfee60d7f748045a0550598a54",
+      "bytes": 15126
+    },
+    {
+      "path": "ui_html.py",
+      "sha256": "3d9dc9a7527add5f86051788a2470ffc5a06b598b851b0699dd63ca4b0268f70",
+      "bytes": 665
+    },
+    {
+      "path": "ui_learning_center.py",
+      "sha256": "8f11c39bcdf5d2c3fe2a85021221f98a21bc5618b7170f8e2c6ec85089580817",
+      "bytes": 16124
+    },
+    {
+      "path": "ui_v12_core.py",
+      "sha256": "5aa33dfc5336d7f2925032b694b6126da388ed4b68b8d1e69072df2a4a05845c",
+      "bytes": 2029
+    },
+    {
+      "path": "ui_v9_battle_panel.py",
+      "sha256": "8910856bf2389e60e621b669cdc98efd6ed33811815a04e80893da4c493c193f",
+      "bytes": 9013
+    },
+    {
+      "path": "ui_v9_deep_report.py",
+      "sha256": "134004480a99718998488d27d600df983b5db629c54aa4c577db40c278302658",
+      "bytes": 2693
+    },
+    {
+      "path": "ui_v9_input.py",
+      "sha256": "d7ac23fd9aad4c3ba766051b951f40f6c19ed1267b34a00062fcfb6da27aac56",
+      "bytes": 2746
+    },
+    {
+      "path": "ui_v9_radar.py",
+      "sha256": "1b4b7821625b6eca139991dcd8ff2192db485fe24b3d77855d2487fc6bd3fe5e",
+      "bytes": 5080
+    },
+    {
+      "path": "ui_watch_center.py",
+      "sha256": "484dece44f870f1101cbcd7604ad6b1fa0f987c2c92b12757f079864427420d6",
+      "bytes": 24237
+    },
+    {
+      "path": "verify_rc24_1_stability.py",
+      "sha256": "3b1703d548c6a21186d7fe1a643113b9e76867249c201cbe6836214b1df51a0b",
+      "bytes": 2818
+    },
+    {
+      "path": "verify_rc24_2_post_render.py",
+      "sha256": "0ff9687fc10c9068a6d16f6032997aef796fcda53037f824ed98d83d93c04fd6",
+      "bytes": 1315
+    }
+  ]
+}
